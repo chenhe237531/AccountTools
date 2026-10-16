@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WorkBuddy 切号器</title>
+<style>
+  :root{
+    --bg:#0a0d14; --panel:#111624; --panel-2:#0d1220; --border:#1e2740; --border-2:#2a3654;
+    --text:#e7ecf5; --muted:#8b96ad; --faint:#5b657c;
+    --accent:#3ddbbf; --accent-strong:#5ce8cf; --accent-dim:rgba(61,219,191,.10);
+    --danger:#f87171; --danger-dim:rgba(248,113,113,.10);
+    --warn:#fbbf24; --warn-dim:rgba(251,191,36,.10);
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"PingFang SC","Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:
+      radial-gradient(1100px 500px at 85% -10%,rgba(61,219,191,.06),transparent 60%),
+      radial-gradient(900px 420px at -10% 110%,rgba(93,142,248,.05),transparent 60%),
+      var(--bg);
+    color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.6;
+  }
+  .app{max-width:1080px;margin:0 auto;padding:28px 24px 60px}
+
+  /* ---------- header ---------- */
+  header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:22px}
+  .logo{
+    width:42px;height:42px;border-radius:12px;flex:none;
+    background:linear-gradient(135deg,rgba(61,219,191,.18),rgba(93,142,248,.12));
+    border:1px solid rgba(61,219,191,.35);
+    display:grid;place-items:center;color:var(--accent);
+  }
+  .brand h1{font-size:19px;font-weight:700;letter-spacing:.5px}
+  .brand p{color:var(--muted);font-size:12.5px}
+  .spacer{flex:1}
+  .btn{
+    appearance:none;border:1px solid var(--border-2);background:var(--panel);color:var(--text);
+    font:inherit;border-radius:10px;padding:8px 16px;cursor:pointer;
+    transition:border-color .15s,background .15s,transform .05s;
+  }
+  .btn:hover{border-color:var(--accent);background:var(--panel-2)}
+  .btn:active{transform:translateY(1px)}
+  .btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
+  .btn.primary{
+    background:linear-gradient(180deg,rgba(61,219,191,.16),rgba(61,219,191,.08));
+    border-color:rgba(61,219,191,.5);color:var(--accent-strong);font-weight:600;
+  }
+  .btn.primary:hover{border-color:var(--accent)}
+  .btn.danger{border-color:rgba(248,113,113,.4);color:var(--danger)}
+  .btn.danger:hover{border-color:var(--danger);background:var(--danger-dim)}
+  .btn.small{padding:5px 12px;border-radius:8px;font-size:12.5px}
+
+  /* ---------- current account bar ---------- */
+  .current-bar{
+    display:flex;align-items:center;gap:22px;flex-wrap:wrap;
+    background:linear-gradient(180deg,var(--panel),var(--panel-2));
+    border:1px solid var(--border);border-radius:14px;padding:16px 20px;margin-bottom:22px;
+  }
+  .current-bar .dot{
+    width:9px;height:9px;border-radius:50%;background:var(--accent);flex:none;
+    box-shadow:0 0 10px rgba(61,219,191,.8);animation:pulse 2.4s infinite;
+  }
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  .kv{display:flex;flex-direction:column;gap:1px}
+  .kv .k{font-size:11px;color:var(--faint);letter-spacing:1px;text-transform:uppercase}
+  .kv .v{font-family:var(--mono);font-size:15px;font-weight:600}
+  .tagline{color:var(--faint);font-size:12px;margin-left:auto;text-align:right}
+  .warn-banner{
+    background:var(--warn-dim);border:1px solid rgba(251,191,36,.35);color:var(--warn);
+    border-radius:10px;padding:8px 14px;font-size:12.5px;margin-bottom:16px;
+  }
+  .err-banner{
+    background:var(--danger-dim);border:1px solid rgba(248,113,113,.35);color:var(--danger);
+    border-radius:10px;padding:8px 14px;font-size:12.5px;margin-bottom:16px;
+  }
+
+  /* ---------- layout ---------- */
+  .cols{display:grid;grid-template-columns:1fr 300px;gap:20px;align-items:start}
+  @media(max-width:860px){.cols{grid-template-columns:1fr}}
+  .panel{
+    background:var(--panel);border:1px solid var(--border);border-radius:14px;overflow:hidden;
+  }
+  .panel-head{
+    display:flex;align-items:center;gap:8px;padding:13px 18px;
+    border-bottom:1px solid var(--border);color:var(--muted);font-size:12.5px;
+    letter-spacing:1.5px;text-transform:uppercase;font-weight:600;
+  }
+  .panel-head .count{
+    margin-left:auto;font-family:var(--mono);color:var(--accent);background:var(--accent-dim);
+    border-radius:20px;padding:1px 10px;font-size:11.5px;letter-spacing:0;
+  }
+
+  /* ---------- snapshot cards ---------- */
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px;padding:16px}
+  .card{
+    background:var(--panel-2);border:1px solid var(--border);border-radius:12px;
+    padding:15px 16px;display:flex;flex-direction:column;gap:10px;
+    transition:border-color .15s,transform .15s;
+  }
+  .card:hover{border-color:var(--border-2);transform:translateY(-2px)}
+  .card.active{border-color:rgba(61,219,191,.55);background:linear-gradient(180deg,rgba(61,219,191,.06),var(--panel-2))}
+  .card-top{display:flex;align-items:center;gap:8px}
+  .card-top .name{font-weight:700;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .badge{
+    font-size:10.5px;border-radius:20px;padding:1px 9px;letter-spacing:.5px;flex:none;
+  }
+  .badge.now{background:var(--accent-dim);color:var(--accent);border:1px solid rgba(61,219,191,.4)}
+  .badge.stale{background:var(--warn-dim);color:var(--warn);border:1px solid rgba(251,191,36,.35)}
+  .badge.expired{background:var(--danger-dim);color:var(--danger);border:1px solid rgba(248,113,113,.35)}
+  .card .meta{font-family:var(--mono);font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:2px}
+  .card .meta b{color:var(--text);font-weight:500}
+  .card .foot{display:flex;align-items:center;gap:10px;margin-top:auto}
+  .card .mtime{font-size:11.5px;color:var(--faint)}
+  .empty{
+    padding:44px 20px;text-align:center;color:var(--faint);font-size:13px;grid-column:1/-1;
+  }
+  .empty b{color:var(--muted)}
+
+  /* ---------- side forms ---------- */
+  .side{display:flex;flex-direction:column;gap:20px}
+  .form-body{padding:16px 18px;display:flex;flex-direction:column;gap:12px}
+  label{font-size:12.5px;color:var(--muted)}
+  input[type=text]{
+    width:100%;background:var(--panel-2);border:1px solid var(--border-2);color:var(--text);
+    font:inherit;font-family:var(--mono);border-radius:10px;padding:9px 12px;outline:none;
+    transition:border-color .15s;
+  }
+  input[type=text]:focus{border-color:var(--accent)}
+  .check{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);cursor:pointer;user-select:none}
+  .check input{accent-color:var(--accent)}
+  .hint{font-size:11.5px;color:var(--faint)}
+  .paths{padding:12px 18px 16px;font-family:var(--mono);font-size:10.5px;color:var(--faint);word-break:break-all;border-top:1px solid var(--border)}
+  .paths div{padding:2px 0}
+
+  /* ---------- log ---------- */
+  .log-wrap{margin-top:20px}
+  .log{
+    background:#070a10;border-top:1px solid var(--border);
+    padding:14px 18px;max-height:280px;overflow-y:auto;
+    font-family:var(--mono);font-size:12px;display:flex;flex-direction:column;gap:8px;
+  }
+  .log::-webkit-scrollbar{width:8px}
+  .log::-webkit-scrollbar-thumb{background:var(--border-2);border-radius:4px}
+  .log-entry{display:flex;flex-direction:column;gap:2px}
+  .log-entry .head{display:flex;gap:10px;color:var(--faint)}
+  .log-entry .head .cmd{color:var(--accent)}
+  .log-entry.fail .head .cmd{color:var(--danger)}
+  .log-entry .out{white-space:pre-wrap;color:var(--muted);padding-left:2px}
+  .log-empty{color:var(--faint);text-align:center;padding:18px 0}
+
+  /* ---------- modal ---------- */
+  .overlay{
+    position:fixed;inset:0;background:rgba(4,6,10,.72);backdrop-filter:blur(3px);
+    display:none;place-items:center;z-index:50;padding:20px;
+  }
+  .overlay.show{display:grid}
+  .modal{
+    width:min(440px,100%);background:var(--panel);border:1px solid var(--border-2);
+    border-radius:16px;padding:22px 24px;box-shadow:0 24px 60px rgba(0,0,0,.5);
+    animation:pop .18s ease;
+  }
+  @keyframes pop{from{transform:scale(.96);opacity:0}to{transform:scale(1);opacity:1}}
+  .modal h3{font-size:16px;margin-bottom:10px}
+  .modal p{color:var(--muted);font-size:13px;margin-bottom:6px}
+  .modal p code{font-family:var(--mono);color:var(--text);background:var(--panel-2);padding:1px 6px;border-radius:6px;font-size:12px}
+  .modal .row{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}
+
+  /* ---------- toast ---------- */
+  #toast{
+    position:fixed;right:22px;bottom:22px;z-index:60;display:flex;flex-direction:column;gap:8px;
+  }
+  .toast{
+    background:var(--panel);border:1px solid var(--border-2);border-left:3px solid var(--accent);
+    border-radius:10px;padding:10px 16px;font-size:13px;max-width:360px;
+    box-shadow:0 10px 30px rgba(0,0,0,.45);animation:slide .2s ease;
+  }
+  .toast.fail{border-left-color:var(--danger)}
+  @keyframes slide{from{transform:translateX(14px);opacity:0}to{transform:none;opacity:1}}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header>
+    <div class="logo">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/>
+        <polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+      </svg>
+    </div>
+    <div class="brand">
+      <h1>WorkBuddy 切号器</h1>
+      <p>会话快照交换 · 应用自动热加载 · 本地控制台</p>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn" id="refreshBtn" onclick="refresh()">
+      <svg style="vertical-align:-3px;margin-right:5px" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>刷新
+    </button>
+  </header>
+
+  <div id="banners"></div>
+
+  <section class="current-bar" id="currentBar">
+    <span class="dot" id="curDot"></span>
+    <div class="kv"><span class="k">当前账号 uid</span><span class="v" id="curUid">—</span></div>
+    <div class="kv"><span class="k">uin</span><span class="v" id="curUin">—</span></div>
+    <div class="tagline">切换后应用通常 1~2 秒内自动生效<br>未生效时可点击右侧「重启 WorkBuddy」</div>
+  </section>
+
+  <div class="cols">
+    <!-- 快照列表 -->
+    <section class="panel">
+      <div class="panel-head">账号快照<span class="count" id="snapCount">0</span></div>
+      <div class="cards" id="cards"></div>
+    </section>
+
+    <!-- 侧栏:保存 / 维护 -->
+    <div class="side">
+      <section class="panel">
+        <div class="panel-head">保存当前账号</div>
+        <div class="form-body">
+          <div>
+            <label for="snapName">快照名称</label>
+            <input type="text" id="snapName" placeholder="如:主号 / 小号" maxlength="32" style="margin-top:5px">
+          </div>
+          <label class="check"><input type="checkbox" id="forceSave">覆盖同名快照</label>
+          <button class="btn primary" id="saveBtn" onclick="doSave()">保存为快照</button>
+          <div class="hint">把当前登录账号的会话整文件存入快照目录(权限 600)。同名已存在时,需勾选覆盖。</div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">维护</div>
+        <div class="form-body">
+          <button class="btn danger" id="restartBtn" onclick="doRestart()">重启 WorkBuddy</button>
+          <div class="hint">兜底手段:热加载未生效时使用。会退出并重新打开 WorkBuddy AI。</div>
+        </div>
+        <div class="paths">
+          <div>脚本 <span id="pScript">—</span></div>
+          <div>快照 <span id="pSnap">—</span></div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- 操作日志 -->
+  <section class="panel log-wrap">
+    <div class="panel-head">操作日志</div>
+    <div class="log" id="log">
+      <div class="log-empty" id="logEmpty">暂无操作记录 —— 页面动作与 wb-switch.sh 的真实输出会显示在这里</div>
+    </div>
+  </section>
+</div>
+
+<!-- 确认弹窗 -->
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <h3 id="mTitle"></h3>
+    <div id="mBody"></div>
+    <div class="row">
+      <button class="btn" onclick="closeModal(false)">取消</button>
+      <button class="btn primary" id="mOk">确认</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+'use strict';
+let STATE = null;
+let modalResolve = null;
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+/* ---------- 工具 ---------- */
+function fmtTime(ts){
+  if(!ts) return '—';
+  const d = new Date(ts * 1000), p = n => String(n).padStart(2,'0');
+  return `${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function daysSince(ts){ return ts ? Math.floor((Date.now()/1000 - ts) / 86400) : null; }
+
+function toast(msg, fail){
+  const el = document.createElement('div');
+  el.className = 'toast' + (fail ? ' fail' : '');
+  el.textContent = msg;
+  $('toast').appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; setTimeout(() => el.remove(), 320); }, 3200);
+}
+
+function addLog(cmd, output, ok){
+  $('logEmpty')?.remove();
+  const e = document.createElement('div');
+  e.className = 'log-entry' + (ok ? '' : ' fail');
+  const t = new Date(), p = n => String(n).padStart(2,'0');
+  e.innerHTML = `<div class="head"><span>[${p(t.getHours())}:${p(t.getMinutes())}:${p(t.getSeconds())}]</span><span class="cmd">$ wb-switch ${esc(cmd)}</span><span>${ok?'✓':'✗'}</span></div>`
+    + (output ? `<div class="out">${esc(output)}</div>` : '');
+  $('log').appendChild(e);
+  $('log').scrollTop = $('log').scrollHeight;
+}
+
+/* ---------- 弹窗 ---------- */
+function confirmModal({title, body, okText}){
+  $('mTitle').textContent = title;
+  $('mBody').innerHTML = body;
+  $('mOk').textContent = okText || '确认';
+  $('overlay').classList.add('show');
+  return new Promise(r => { modalResolve = r; });
+}
+function closeModal(v){
+  $('overlay').classList.remove('show');
+  if(modalResolve){ modalResolve(v); modalResolve = null; }
+}
+$('mOk').onclick = () => closeModal(true);
+$('overlay').addEventListener('click', e => { if(e.target === $('overlay')) closeModal(false); });
+document.addEventListener('keydown', e => { if(e.key === 'Escape') closeModal(false); });
+
+/* ---------- 渲染 ---------- */
+function render(){
+  const s = STATE;
+  $('banners').innerHTML = '';
+  if(!s.scriptFound){
+    $('banners').innerHTML += `<div class="err-banner">未找到 wb-switch.sh(已尝试 ~/.workbuddy/ 与本目录),仅可浏览状态,无法执行动作。</div>`;
+  }
+  if(s.loggedOut){
+    $('banners').innerHTML += `<div class="warn-banner">检测到登出标记(.logged-out):当前会话可能被忽略。切换任意账号会自动清除该标记。</div>`;
+  }
+
+  const c = s.current;
+  $('curUid').textContent = c ? c.uid : '未登录';
+  $('curUin').textContent = c ? c.uin : '—';
+  $('curDot').style.background = c ? 'var(--accent)' : 'var(--danger)';
+  $('pScript').textContent = s.scriptPath || '未找到';
+  $('pSnap').textContent = s.snapDir;
+
+  $('snapCount').textContent = s.snapshots.length;
+  const box = $('cards');
+  if(!s.snapshots.length){
+    box.innerHTML = `<div class="empty"><b>还没有快照</b><br>先在 WorkBuddy 中登录账号,再在右侧「保存当前账号」建立第一个快照</div>`;
+    return;
+  }
+  box.innerHTML = s.snapshots.map(sn => {
+    const days = daysSince(sn.mtime);
+    let badge = '';
+    if(sn.active) badge = '<span class="badge now">当前账号</span>';
+    else if(days !== null && days > 30) badge = `<span class="badge expired">token 可能已过期</span>`;
+    else if(days !== null && days > 25) badge = `<span class="badge stale">${days} 天未刷新</span>`;
+    return `
+      <div class="card${sn.active ? ' active' : ''}">
+        <div class="card-top">
+          <span class="name" title="${esc(sn.name)}">${esc(sn.name)}</span>
+          ${badge}
+        </div>
+        <div class="meta">
+          <span>uid <b>${esc(sn.uid)}</b></span>
+          <span>uin <b>${esc(sn.uin)}</b></span>
+        </div>
+        <div class="foot">
+          <button class="btn small primary" ${sn.active ? 'disabled' : ''}
+                  onclick="doSwitch('${esc(sn.name).replace(/'/g,"&#39;")}')">
+            ${sn.active ? '使用中' : '切换到此账号'}
+          </button>
+          <span class="mtime">保存于 ${fmtTime(sn.mtime)}${days !== null && !sn.active ? ' · ' + days + ' 天前' : ''}</span>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function refresh(){
+  try{
+    const r = await fetch('/api/state');
+    STATE = await r.json();
+    render();
+  }catch(e){
+    toast('获取状态失败: ' + e.message, true);
+  }
+}
+
+/* ---------- 动作 ---------- */
+async function api(path, body){
+  const r = await fetch(path, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body || {})
+  });
+  return await r.json();
+}
+
+async function doSwitch(name){
+  const sn = STATE.snapshots.find(x => x.name === name);
+  const ok = await confirmModal({
+    title: `切换到「${name}」?`,
+    body: `<p>目标账号 uid <code>${sn ? sn.uid : '?'}</code></p>
+           <p>切换会自动把当前账号回存为快照,并原子替换会话文件;应用通常 1~2 秒内自动热加载。</p>`,
+    okText: '切换'
+  });
+  if(!ok) return;
+  await withBusy(null, async () => {
+    const res = await api('/api/switch', {name});
+    addLog(`switch ${name}`, res.output, res.ok);
+    toast(res.ok ? `已切换到「${name}」` : '切换失败,详见日志', !res.ok);
+    await refresh();
+  });
+}
+
+async function doSave(){
+  const name = $('snapName').value.trim();
+  if(!name){ toast('请先输入快照名称', true); $('snapName').focus(); return; }
+  const force = $('forceSave').checked;
+  if(force){
+    const ok = await confirmModal({
+      title: '覆盖已有快照?',
+      body: `<p>将用当前会话覆盖名为 <code>${esc(name)}</code> 的快照,原快照内容会被替换。</p>`,
+      okText: '覆盖保存'
+    });
+    if(!ok) return;
+  }
+  await withBusy($('saveBtn'), async () => {
+    const res = await api('/api/save', {name, force});
+    addLog(`save ${name}${force ? ' (FORCE=1)' : ''}`, res.output, res.ok);
+    toast(res.ok ? `快照「${name}」已保存` : '保存失败,详见日志', !res.ok);
+    if(res.ok){ $('snapName').value = ''; $('forceSave').checked = false; }
+    await refresh();
+  });
+}
+
+async function doRestart(){
+  const ok = await confirmModal({
+    title: '重启 WorkBuddy?',
+    body: '<p>将退出并重新打开 WorkBuddy AI。热加载未生效时才需要此操作。</p>',
+    okText: '重启'
+  });
+  if(!ok) return;
+  await withBusy($('restartBtn'), async () => {
+    const res = await api('/api/restart', {});
+    addLog('restart', res.output, res.ok);
+    toast(res.ok ? '已触发重启' : '重启失败,详见日志', !res.ok);
+  });
+}
+
+async function withBusy(btn, fn){
+  if(btn){ btn.disabled = true; btn.dataset.t = btn.textContent; btn.textContent = '执行中…'; }
+  try{ await fn(); }
+  catch(e){ toast('请求失败: ' + e.message, true); }
+  finally{ if(btn){ btn.disabled = false; btn.textContent = btn.dataset.t; } }
+}
+
+refresh();
+</script>
+</body>
+</html>

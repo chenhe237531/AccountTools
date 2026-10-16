@@ -1,0 +1,18 @@
+{
+  "name": "trae-autocheckin",
+  "displayName": "Trae 自动签到",
+  "description": "启动后自动领取每日签到积分（通过应用内置命令，自带签名）",
+  "version": "1.0.0",
+  "publisher": "signcenter",
+  "type": "commonjs",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./extension.js"
+}

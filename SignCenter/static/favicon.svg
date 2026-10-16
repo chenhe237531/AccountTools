@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#3b82f6"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="15" fill="url(#g)"/>
+  <!-- 日历轮廓 -->
+  <rect x="13" y="16" width="38" height="34" rx="6" fill="none" stroke="#ffffff" stroke-opacity="0.55" stroke-width="3"/>
+  <path d="M13 27h38" stroke="#ffffff" stroke-opacity="0.55" stroke-width="3"/>
+  <path d="M22 10v8M42 10v8" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+  <!-- 对勾 -->
+  <path d="M23 37l7 7 12-14" fill="none" stroke="#ffffff" stroke-width="5.5"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
