@@ -11,6 +11,9 @@ __pycache__/
 
 # ---- Agent 工作记忆(非交付物) ----
 .workbuddy/
+.agents/
+.claude/
+skills-lock.json
 
 # ---- macOS ----
 .DS_Store

@@ -22,12 +22,68 @@ python3 -m venv .venv
 |---|---|
 | 平台卡片 | WorkBuddy / Trae CN / Qoder，各带启停开关、当前账号、快照列表 |
 | 添加账号 | 在桌面应用登录后点「+ 添加账号」，保存当前登录态为快照 |
+| **导入 JSON** | WorkBuddy 卡片「⬆ 导入 JSON」：导入外部导出的登录凭证（access/refresh token），账号直接经官方 API 签到，**不切换、不重启桌面应用** |
 | 切换账号 | 点账号 chip：WorkBuddy 热加载秒切；Trae/Qoder 退出应用→换凭据→重启 |
 | 立即签到 | 卡片蓝色按钮：**只签当前登录的这个账号**（已是当前账号，不重启应用，秒级完成） |
-| 全部签到 | 卡片灰色按钮：**依次切换该软件的所有账号**各签到一次，完成后自动切回原账号 |
+| 全部签到 | 卡片灰色按钮：快照账号依次切换签到，**导入账号 API 直连**，完成后自动切回原账号 |
 | 全部平台签到 | 底部蓝色按钮：对所有已启用平台执行「全部签到」 |
 | 自动签到 | 每天到设定时间（默认 05:20）自动全部签到；「自动补签」支持当天补跑 |
 | 签到记录 | 底部面板滚动显示最近 100 条记录，持久化在 `data/logs.jsonl` |
+| **成长任务** | WorkBuddy 卡片紫色按钮「成长任务 N/M」：查看[成长中心](https://www.workbuddy.cn/profile/growth-center)任务进度，勾选后**后台自动完成**获得积分/能量（详见下文） |
+
+## 凭证导入（WorkBuddy token 直连账号）
+
+WorkBuddy 的 access/refresh token 可直连 `www.workbuddy.cn` 官方签到 API（Bearer 鉴权，
+本机实测 WAF 放行），因此外部导出的登录凭证无需进入桌面应用即可签到：
+
+1. 点 WorkBuddy 卡片「**⬆ 导入 JSON**」，选择凭证文件（支持单对象或数组、
+   平铺 `access_token/refresh_token` 或 `auth_raw.auth.*` 嵌套格式，`Workbuddy/wb_import.py` 负责解析）；
+2. 导入时自动**调官方接口验证**凭证有效性（失效则跳过并提示原因），uid 去重、重复导入即更新凭证；
+3. 导入的账号以紫色虚线 chip 展示（悬停可见手机尾号/uid/凭证剩余天数），点击 chip 不会切换应用；
+4. 「全部签到」/ 自动签到会覆盖这些账号：**直接 API 领取**，不切换桌面应用；token 过期时
+   自动经 Keycloak 刷新端点续期（refresh_token 约每 28 天轮换一次，脚本自动落盘）。
+
+凭证存于 `~/.workbuddy/token-accounts.json`（权限 600）。CLI 用法见
+`Workbuddy/wb_import.py`（`import/list/status/checkin/remove`）。
+
+> 注意：导入账号与桌面快照账号**不要混用同一账号**——桌面应用 daemon 刷新 token 会轮换
+> refresh_token，导致导入的副本失效。池子账号只走导入直连即可。
+
+## 成长任务自动化（WorkBuddy 专属）
+
+WorkBuddy 卡片上的「成长任务 N/M」按钮（N=已领取任务数）：
+
+1. **点击按钮** → 弹出任务列表：每行显示任务名、奖励（⚡积分/◇能量）、状态（未接受/进行中/可领奖/已领取）与**预估自动化耗时**；
+2. **勾选任务**（可自动化的默认勾选，已领取/需手动的置灰）→ 点「后台执行勾选任务」；
+3. **后台执行**：服务端线程执行，弹窗内实时滚动执行日志；期间卡片按钮呼吸闪烁，关闭弹窗不影响执行；
+4. 执行完自动**领取全部已完成任务奖励**，并顺带处理**连续登录兑换**与**抽奖**。
+
+### 执行通道（两条，均为真实路径）
+
+| 通道 | 覆盖任务 | 原理 |
+|---|---|---|
+| wbipc 轻量通道 | 接受任务、领奖、连续登录兑换、抽奖 | 复用 `wb_checkin.py` 的 wbipc 客户端，让 WorkBuddy 应用进程用当前登录会话调成长中心官方 API，秒级完成 |
+| 桌面端 CDP 通道 | 聊天 5 次、召唤专家/专家团、体验灵感/资料库/发现应用 | Playwright 连接 WorkBuddy 调试端口（`--remote-debugging-port=9223`），驱动真实产品使用，服务端按真实行为计数（全流程实测通过） |
+
+**CDP 通道前置条件**：WorkBuddy 需带调试端口运行（一次性）：
+
+```bash
+cd AccountTools/Workbuddy && python3 desktop.py ensure
+```
+
+> 脚本会重启 WorkBuddy（与切号器 restart 同模式，登录态/聊天记录不受影响）。
+> 执行 CDP 任务期间会真实操作应用界面，请勿同时使用该应用。
+> 公众号关注、连接器授权等任务无法自动化，列表中标注「需手动」。
+
+### 成长任务 API
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/workbuddy/growth/status` | 任务概览（60s 缓存）：进度/能量/等级/任务列表 |
+| POST | `/api/workbuddy/growth/run` | 后台执行 `{tasks: [task_code…]}` |
+| GET | `/api/workbuddy/growth/job` | 执行进度（steps 日志流 + 结果） |
+
+CLI 用法：`python3 wb_growth.py status` / `python3 wb_growth.py run chat_5 expert_5`
 
 ## 「签到」的原理（真实领取，2026-10-16 重构）
 
@@ -114,6 +170,7 @@ SignCenter/
 | POST | `/api/platform/{pid}/switch` | 切换账号 `{name}` |
 | POST | `/api/platform/{pid}/delete` | 删除快照 `{name}` |
 | POST | `/api/platform/{pid}/checkin` | 平台签到 `{name}`=指定账号（当前账号签到）；`{}`=该平台全部账号轮流签到 |
+| POST | `/api/platform/workbuddy/import` | 导入凭证 JSON `{data: "<文件内容>"}`（验证有效后入池，uid 去重） |
 | POST | `/api/checkin/all` | 全部已启用平台签到 |
 | POST | `/api/settings` | 修改自动签到设置 |
 

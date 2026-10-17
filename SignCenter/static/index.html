@@ -107,6 +107,8 @@
   .chip .x:hover { color: var(--red); }
   .chip.add { color: var(--text-dim); border-style: dashed; }
   .chip.add:hover { color: var(--accent); border-color: var(--accent); }
+  .chip.token { border-style: dashed; border-color: rgba(99,102,241,.45); color: #a5b4fc; }
+  .chip.token:hover { border-color: #818cf8; color: #c7d2fe; }
   /* 按钮 */
   .btn {
     border: none; border-radius: 8px; padding: 9px 0;
@@ -185,6 +187,57 @@
   }
   .modal .modal-btns { display: flex; gap: 10px; margin-top: 16px; }
   .modal .modal-btns .btn { width: auto; padding: 8px 22px; }
+  /* ---------- 成长任务 ---------- */
+  .btn-growth {
+    background: linear-gradient(180deg, rgba(99,102,241,.22), rgba(99,102,241,.10));
+    border-color: rgba(129,140,248,.5); color: #c7d2fe; font-weight: 600;
+  }
+  .btn-growth:hover { border-color: #818cf8; }
+  .btn-growth.running { animation: gpulse 1.6s infinite; }
+  /* ---------- Trae 设备重置 ---------- */
+  .btn-reset {
+    background: linear-gradient(180deg, rgba(14,165,233,.22), rgba(14,165,233,.10));
+    border: 1px solid rgba(56,189,248,.5); color: #bae6fd; font-weight: 600;
+  }
+  .btn-reset:hover { border-color: #38bdf8; }
+  .btn-reset.running { animation: gpulse 1.6s infinite; }
+  @keyframes gpulse { 0%,100%{opacity:1} 50%{opacity:.55} }
+  .modal.wide { width: 620px; }
+  .g-head { display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:12px; }
+  .g-head .stat { font-size:12.5px; color: var(--text-dim); }
+  .g-head .stat b { color: var(--text); font-family:"SF Mono",Menlo,monospace; }
+  .g-head .stat .lit { color: var(--accent); }
+  .g-list { max-height: 46vh; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; }
+  .g-list::-webkit-scrollbar { width: 6px; }
+  .g-list::-webkit-scrollbar-thumb { background: #2a3648; border-radius: 3px; }
+  .g-row {
+    display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+    border-bottom: 1px solid var(--border); cursor: pointer;
+  }
+  .g-row:last-child { border-bottom: none; }
+  .g-row:hover { background: rgba(99,102,241,.05); }
+  .g-row.disabled { opacity: .45; cursor: not-allowed; }
+  .g-row input[type=checkbox] { accent-color: #6366f1; width: 15px; height: 15px; flex: none; }
+  .g-name { font-size: 13.5px; color: var(--text); flex: 1; min-width: 0;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .g-est { font-size: 11.5px; color: #8a94b8; flex: none; }
+  .g-reward { font-size: 11.5px; color: #7ee2b8; flex: none; font-family:"SF Mono",Menlo,monospace; }
+  .g-status { font-size: 10.5px; border-radius: 12px; padding: 1px 8px; flex: none;
+              border: 1px solid var(--border); color: var(--text-dim); }
+  .g-status.claimed { color:#4ade80; border-color:rgba(74,222,128,.35); }
+  .g-status.completed { color:#fbbf24; border-color:rgba(251,191,36,.35); }
+  .g-status.progress { color:#818cf8; border-color:rgba(129,140,248,.35); }
+  .g-progress-box { margin-top: 12px; }
+  .g-steps {
+    font-family:"SF Mono",Menlo,Consolas,monospace; font-size: 12px; line-height: 1.9;
+    max-height: 34vh; overflow-y: auto; background:#0d1420; border:1px solid var(--border);
+    border-radius:10px; padding: 10px 14px;
+  }
+  .g-steps::-webkit-scrollbar { width: 6px; }
+  .g-steps::-webkit-scrollbar-thumb { background: #2a3648; border-radius: 3px; }
+  .g-steps .ts { color:#556274; margin-right: 8px; }
+  .g-steps .done { color:#4ade80; }
+  .g-note { font-size: 11.5px; color:#8a94b8; margin-top: 8px; line-height: 1.7; }
 </style>
 </head>
 <body>
@@ -218,6 +271,7 @@
 </div>
 
 <div id="toast"></div>
+<input type="file" id="file-import" accept=".json,application/json" hidden>
 
 <!-- 修改时间 modal -->
 <div class="modal-mask" id="modal-time">
@@ -236,18 +290,64 @@
   </div>
 </div>
 
+<!-- 成长任务 modal -->
+<div class="modal-mask" id="modal-growth">
+  <div class="modal wide">
+    <h3>WorkBuddy 成长任务</h3>
+    <div class="g-head" id="g-head"><span class="stat">加载中…</span></div>
+    <div class="g-list" id="g-list"></div>
+    <div class="g-progress-box" id="g-progress-box" style="display:none">
+      <div class="g-steps" id="g-steps"></div>
+    </div>
+    <p class="g-note">
+      轻量任务（接受/领奖/兑换/抽奖）经应用 wbipc 通道秒级完成；<b>驱动桌面端</b>的任务（聊天/专家/灵感等）
+      需要 WorkBuddy 以调试端口运行（终端执行 <code>python3 Workbuddy/desktop.py ensure</code>），
+      执行期间会真实操作应用界面，请勿同时使用该应用。
+    </p>
+    <div class="modal-btns">
+      <button class="btn" id="btn-growth-run">后台执行勾选任务</button>
+      <button class="btn btn-ghost" id="btn-growth-refresh">刷新</button>
+      <button class="btn btn-ghost" data-close>关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- Trae 设备重置 modal -->
+<div class="modal-mask" id="modal-trae-reset">
+  <div class="modal wide">
+    <h3>Trae CN · 本机设备重置</h3>
+    <p>把本机 Trae 识别为<b>全新设备</b>（macOS 版《trae重置工具 6.0》，适用于「设备数量已达上限」时）：</p>
+    <ul>
+      <li>重写 <code>machineid</code> 与 <code>storage.json</code> 三个 telemetry 设备标识，清除登录凭据键（会掉线），清空全部本地缓存；</li>
+      <li>给客户端 <code>main.js</code> 注入 16 位设备ID读取分支（幂等，原始文件自动备份）；</li>
+      <li>为每个数据目录写入全新 16 位设备ID。</li>
+    </ul>
+    <p style="color:var(--yellow)">执行前请<b>完全退出 Trae</b>（工具也会自动检测并拒绝）。重置后重新打开 Trae，直接点个人用户登录即可恢复，请勿清理浏览器缓存。</p>
+    <div class="g-progress-box" id="r-progress-box" style="display:none">
+      <div class="g-steps" id="r-steps"></div>
+    </div>
+    <div class="modal-btns">
+      <button class="btn" id="btn-trae-reset-run">开始设备重置</button>
+      <button class="btn btn-ghost" id="btn-trae-reset-refresh">刷新状态</button>
+      <button class="btn btn-ghost" data-close>关闭</button>
+    </div>
+  </div>
+</div>
+
 <!-- 教程 modal -->
 <div class="modal-mask" id="modal-help">
   <div class="modal">
     <h3>使用教程</h3>
     <ul>
       <li><b>添加账号</b>：先在对应桌面应用里登录账号，然后点卡片里的 <code>+ 添加账号</code>，把当前登录态保存为快照。</li>
+      <li><b>导入 JSON</b>（WorkBuddy 卡片）：选择外部导出的登录凭证 JSON（含 access/refresh token，支持单对象或数组、平铺或 <code>auth_raw</code> 嵌套格式）。导入时自动验证有效性，账号以虚线紫色 chip 展示，签到时直接经官方 API 领取积分，<b>不切换、不重启桌面应用</b>；token 过期会自动用 refresh_token 续期。重复导入同一账号即更新凭证。</li>
       <li><b>切换账号</b>：点击账号名 chip 即可切换。WorkBuddy 热加载秒切；Trae / Qoder 会先退出应用再重启（请保存好编辑器内容）。</li>
       <li><b>立即签到</b>（卡片蓝色按钮）：只签到<em>当前登录</em>的那个账号——它已是当前账号，不会重启应用，秒级完成。</li>
       <li><b>全部签到</b>（卡片灰色按钮）：依次切换该软件的<em>所有账号</em>各签到一次，完成后自动切回原账号。Trae/Qoder 每次切换都会退出并重启应用，账号多时耗时较长。</li>
       <li><b>全部平台签到</b>（底部蓝色按钮）：对所有已启用平台执行「全部签到」。</li>
       <li><b>删除账号</b>：点击账号 chip 上的 ×，仅删除本地快照，不影响应用内登录。</li>
       <li><b>自动签到</b>：到底部设定时间后自动执行「全部签到」；需保持本服务运行。</li>
+      <li><b>设备重置</b>（Trae 卡片）：切号过多提示「设备数量已达上限」时使用。重置本机设备标识（machineid / storage.json / 全部缓存），并给客户端注入16位设备ID分支，让 Trae 把本机识别为全新设备。需先完全退出 Trae；重置后账号掉线属正常，重新打开 Trae 直接点个人用户登录即可。命令行：<code>python3 Trae/trae_reset.py --cli</code>。</li>
       <li><b>高级</b>：在 <code>data/config.json</code> 里可为平台配置 <code>checkin_command</code> 钩子（签到时执行的 shell 命令，可用 <code>$SIGN_PLATFORM</code> / <code>$SIGN_ACCOUNT</code> 变量），接入真实签到 API。</li>
     </ul>
     <div class="modal-btns">
@@ -300,10 +400,11 @@ function render() {
       const cls = ["chip"];
       if (a.active) cls.push("active");
       if (signedSet.has(a.name)) cls.push("signed");
+      if (a.token) cls.push("token");
       const label = a.display || a.name;
-      const tip = `${a.sub || ""}\n快照名: ${a.name}`;
+      const tip = `${a.sub || ""}\n快照名: ${a.name}` + (a.token ? "\n导入的 token 账号：API 直连签到，点击无需切换" : "");
       return `<span class="${cls.join(" ")}" data-act="switch" data-name="${esc(a.name)}" title="${esc(tip)}">
-        ${esc(label)}<i class="x" data-act="delete" data-name="${esc(a.name)}" title="删除快照">×</i>
+        ${esc(label)}<i class="x" data-act="delete" data-name="${esc(a.name)}" title="删除账号">×</i>
       </span>`;
     }).join("");
 
@@ -329,16 +430,30 @@ function render() {
       <div class="accounts">
         ${chips}
         <span class="chip add" data-act="add">+ 添加账号</span>
+        ${p.id === "workbuddy" ? `
+        <span class="chip add" data-act="import"
+          title="导入外部导出的 WorkBuddy 登录凭证 JSON（含 access/refresh token）。&#10;导入后账号直接经官方 API 签到，无需切换桌面应用；重复导入同一账号会自动更新凭证。">
+          ⬆ 导入 JSON</span>` : ""}
       </div>
       <div class="card-actions">
         <button class="btn" data-act="checkin" title="只签到当前登录的这个账号"
           ${p.enabled && p.accounts.length ? "" : "disabled"}>
           ${p.enabled ? "立即签到" : "已停用"}
         </button>
-        <button class="btn btn-ghost" data-act="checkin-all" title="依次切换该软件的全部账号各签到一次"
-          ${p.enabled && p.accounts.length > 1 ? "" : "disabled"}>
+        <button class="btn btn-ghost" data-act="checkin-all" title="依次签到该软件的全部账号（快照账号切换签到，导入账号 API 直连）"
+          ${p.enabled && p.accounts.length ? "" : "disabled"}>
           全部签到
         </button>
+        ${p.id === "workbuddy" ? `
+        <button class="btn btn-growth" id="btn-growth-open" data-act="growth"
+          title="自动完成成长中心任务获得积分/能量">
+          成长任务 <b id="growth-count">${GROWTH && GROWTH.ok ? `${GROWTH.completed}/${GROWTH.total}` : "–/–"}</b>
+        </button>` : ""}
+        ${p.id === "trae" ? `
+        <button class="btn btn-reset" data-act="trae-reset"
+          title="重置本机设备标识（machineid/storage.json/缓存），让 Trae 把本机识别为新设备">
+          设备重置
+        </button>` : ""}
       </div>
     `;
     card.dataset.pid = p.id;
@@ -396,7 +511,14 @@ $("#grid").addEventListener("click", async (ev) => {
   const act = actEl.dataset.act;
   const name = actEl.dataset.name;
 
-  if (act === "toggle") {
+  if (act === "growth") {
+    openGrowthModal();
+  } else if (act === "import") {
+    $("#file-import").click();
+  } else if (act === "trae-reset") {
+    $("#modal-trae-reset").classList.add("show");
+    pollTraeResetJob();   // 若有正在执行/上次的重置,直接显示进度
+  } else if (act === "toggle") {
     const enabled = actEl.checked;
     const r = await api(`/api/platform/${pid}/toggle`, { enabled });
     toast(r.output, !r.ok);
@@ -404,11 +526,19 @@ $("#grid").addEventListener("click", async (ev) => {
   } else if (act === "delete") {
     ev.stopPropagation();
     const disp = dispOf(pid, name);
-    if (!confirm(`删除账号 ${disp} 的快照（仅删除本地快照文件，不影响应用内登录）？`)) return;
+    const isToken = String(name).startsWith("token:");
+    const tip = isToken
+      ? `移除导入的账号 ${disp}？（仅从本地账号池删除其凭证，不影响其他数据）`
+      : `删除账号 ${disp} 的快照（仅删除本地快照文件，不影响应用内登录）？`;
+    if (!confirm(tip)) return;
     const r = await api(`/api/platform/${pid}/delete`, { name });
     toast(r.output, !r.ok);
     loadOverview();
   } else if (act === "switch") {
+    if (String(name).startsWith("token:")) {
+      toast(`「${dispOf(pid, name)}」是导入的 token 账号：无需切换，签到时直接经官方 API 完成`);
+      return;
+    }
     const p = OVERVIEW.platforms.find(x => x.id === pid);
     if (p.needsRestart && !confirm(`切换 ${p.label} 到 ${dispOf(pid, name)} 将退出并重启应用，请先保存好工作内容。继续？`)) return;
     setBusy(true);
@@ -430,7 +560,10 @@ $("#grid").addEventListener("click", async (ev) => {
     const p = OVERVIEW.platforms.find(x => x.id === pid);
     const activeAcc = p.accounts.find(a => a.active);
     if (!activeAcc) {
-      toast(`当前账号尚未保存为快照，无法签到。请先保存当前账号（「+ 添加账号」）或切换到一个已有账号。`, true);
+      const hasToken = p.accounts.some(a => String(a.name).startsWith("token:"));
+      toast(hasToken
+        ? `当前无已登录的快照账号。导入的 token 账号请使用「全部签到」（API 直连，秒级完成）。`
+        : `当前账号尚未保存为快照，无法签到。请先保存当前账号（「+ 添加账号」）或切换到一个已有账号。`, true);
       return;
     }
     setBusy(true);
@@ -440,9 +573,11 @@ $("#grid").addEventListener("click", async (ev) => {
     toast(r.output, !r.ok);
     loadOverview(); loadLogs();
   } else if (act === "checkin-all") {
-    // 全部签到 = 该软件下所有账号轮流切换签到，完成后切回原账号
+    // 全部签到 = 快照账号轮流切换签到,导入的 token 账号 API 直连;完成后切回原账号
     const p = OVERVIEW.platforms.find(x => x.id === pid);
-    let tip = `将依次切换 ${p.label} 的 ${p.accounts.length} 个账号各签到一次，完成后切回原账号。`;
+    const nToken = p.accounts.filter(a => String(a.name).startsWith("token:")).length;
+    let tip = `将依次为 ${p.label} 的 ${p.accounts.length} 个账号签到`
+            + (nToken ? `（其中 ${nToken} 个导入账号经 API 直连，不切换应用）` : `，完成后切回原账号。`);
     if (p.needsRestart) tip += "\n注意：该软件切换会退出并重启应用，请先保存好工作内容！";
     if (!confirm(tip + "\n继续？")) return;
     setBusy(true);
@@ -499,11 +634,179 @@ function setBusy(b) {
   document.querySelectorAll(".btn").forEach(x => x.classList.toggle("busy", b));
 }
 
+/* ---------- WorkBuddy 凭证 JSON 导入 ---------- */
+$("#file-import").addEventListener("change", async () => {
+  const f = $("#file-import").files[0];
+  $("#file-import").value = "";   // 复位,允许再次选择同一文件
+  if (!f) return;
+  let text;
+  try { text = await f.text(); }
+  catch (e) { toast(`读取文件失败: ${e}`, true); return; }
+  setBusy(true);
+  toast(`正在导入 ${f.name} 并验证凭证有效性…`);
+  try {
+    const r = await api("/api/platform/workbuddy/import", { data: text });
+    setBusy(false);
+    const skip = (r.skipped || []).map(s => `${s.name}：${s.reason}`).join("\n");
+    toast(r.output + (skip ? `\n${skip}` : ""), !r.ok);
+    loadOverview(); loadLogs();
+  } catch (e) {
+    setBusy(false);
+    toast(`导入请求失败: ${e}`, true);
+  }
+});
+
+/* ---------- WorkBuddy 成长任务 ---------- */
+let GROWTH = null;          // /api/workbuddy/growth/status 缓存
+let growthTimer = null;     // job 轮询定时器
+const STATUS_TEXT = {not_accepted: "未接受", accepted: "已接受", in_progress: "进行中",
+                     completed: "可领奖", claimed: "已领取"};
+
+async function loadGrowthStatus(force) {
+  try {
+    GROWTH = await api(`/api/workbuddy/growth/status${force ? "?_=" + Date.now() : ""}`);
+  } catch (e) { GROWTH = {ok: false, error: "服务未就绪"}; }
+  const el = document.getElementById("growth-count");
+  if (el) el.textContent = GROWTH.ok ? `${GROWTH.completed}/${GROWTH.total}` : "–/–";
+  return GROWTH;
+}
+
+function renderGrowthModal() {
+  const head = $("#g-head"), list = $("#g-list");
+  if (!GROWTH || !GROWTH.ok) {
+    head.innerHTML = `<span class="stat" style="color:var(--red)">${esc(GROWTH?.error || "加载失败")}</span>`;
+    list.innerHTML = "";
+    return;
+  }
+  head.innerHTML = `
+    <span class="stat">任务 <b class="lit">${GROWTH.completed}/${GROWTH.total}</b> 已完成</span>
+    <span class="stat">能量 <b class="lit">${GROWTH.energy ?? "–"}</b></span>
+    <span class="stat">等级 <b>${esc(GROWTH.levelName || ("Lv." + (GROWTH.level ?? "–")))}</b></span>`;
+  list.innerHTML = GROWTH.tasks.map(t => {
+    const claimable = t.status !== "claimed" && t.automatable && t.type !== "auto";
+    const cls = ["g-row"];
+    if (!claimable) cls.push("disabled");
+    const stCls = t.status === "claimed" ? "claimed" :
+                  t.status === "completed" ? "completed" :
+                  (t.current > 0 ? "progress" : "");
+    const stTxt = t.status === "claimed" ? "✓ 已领取" :
+                  t.status === "completed" ? "可领奖" :
+                  STATUS_TEXT[t.status] || t.status;
+    const prog = t.target ? ` · ${t.current}/${t.target}` : "";
+    return `
+    <label class="${cls.join(" ")}" title="${esc(t.title)}">
+      <input type="checkbox" data-code="${esc(t.code)}" ${claimable ? "" : "disabled"}
+             ${claimable && t.type === "cdp" ? "checked" : ""}>
+      <span class="g-name">${esc(t.title)}${t.type === "manual" ? " <span class='g-est'>（需手动）</span>" : ""}</span>
+      <span class="g-reward">⚡${t.credit} ◇${t.energy}</span>
+      <span class="g-est">${esc(t.est)}</span>
+      <span class="g-status ${stCls}">${esc(stTxt)}${prog}</span>
+    </label>`;
+  }).join("");
+}
+
+async function openGrowthModal() {
+  $("#modal-growth").classList.add("show");
+  $("#g-progress-box").style.display = "none";
+  await loadGrowthStatus(true);
+  renderGrowthModal();
+  pollGrowthJob();   // 若有正在执行的任务,直接显示进度
+}
+
+async function startGrowthRun() {
+  const codes = [...document.querySelectorAll("#g-list input[type=checkbox]:checked")]
+    .map(x => x.dataset.code);
+  if (!codes.length) { toast("请先勾选要执行的任务", true); return; }
+  const r = await api("/api/workbuddy/growth/run", { tasks: codes });
+  toast(r.output, !r.ok);
+  if (r.ok) {
+    $("#g-progress-box").style.display = "block";
+    $("#g-steps").innerHTML = "";
+    pollGrowthJob();
+  }
+}
+
+function pollGrowthJob() {
+  if (growthTimer) clearInterval(growthTimer);
+  const tick = async () => {
+    let job;
+    try { job = await api("/api/workbuddy/growth/job"); } catch (e) { return; }
+    const btn = document.getElementById("btn-growth-open");
+    if (btn) btn.classList.toggle("running", !!job.running);
+    if (!job.running && !job.steps.length) return;
+    $("#g-progress-box").style.display = "block";
+    const doneMark = job.running ? "" : `<div class="done">—— 执行结束 ${esc(job.finishedAt)} · ${esc(job.result?.output || "")} ——</div>`;
+    $("#g-steps").innerHTML =
+      job.steps.map(s => `<div><span class="ts">${esc(s.ts)}</span>${esc(s.msg)}</div>`).join("") + doneMark;
+    $("#g-steps").scrollTop = $("#g-steps").scrollHeight;
+    if (!job.running) {
+      clearInterval(growthTimer); growthTimer = null;
+      loadGrowthStatus(true).then(renderGrowthModal);
+      loadOverview(); loadLogs();
+    }
+  };
+  tick();
+  growthTimer = setInterval(tick, 2500);
+}
+
+// 卡片按钮(事件委托:grid 点击里排除 data-act=growth 走独立弹窗)
+$("#btn-growth-run").addEventListener("click", startGrowthRun);
+$("#btn-growth-refresh").addEventListener("click", async () => {
+  await loadGrowthStatus(true);
+  renderGrowthModal();
+});
+
+/* ---------- Trae 设备重置 ---------- */
+let traeResetTimer = null;   // job 轮询定时器
+
+function pollTraeResetJob() {
+  if (traeResetTimer) clearInterval(traeResetTimer);
+  const tick = async () => {
+    let job;
+    try { job = await api("/api/trae/reset/job"); } catch (e) { return; }
+    const btn = document.querySelector('[data-act="trae-reset"]');
+    if (btn) btn.classList.toggle("running", !!job.running);
+    if (!job.running && !job.steps.length) return;
+    $("#r-progress-box").style.display = "block";
+    const doneMark = job.running ? "" : `<div class="done">—— 执行结束 ${esc(job.finishedAt)} · ${esc(job.result?.output || "")} ——</div>`;
+    $("#r-steps").innerHTML =
+      job.steps.map(s => `<div><span class="ts">${esc(s.ts)}</span>${esc(s.msg)}</div>`).join("") + doneMark;
+    $("#r-steps").scrollTop = $("#r-steps").scrollHeight;
+    if (!job.running) {
+      clearInterval(traeResetTimer); traeResetTimer = null;
+      loadOverview(); loadLogs();
+    }
+  };
+  tick();
+  traeResetTimer = setInterval(tick, 2000);
+}
+
+async function startTraeReset() {
+  if (!confirm("确定重置本机 Trae 设备标识？\n\n" +
+      "· 需先完全退出 Trae（工具会自动检测，运行中会拒绝执行）\n" +
+      "· 当前账号会掉线：重置后重新打开 Trae，直接点个人用户登录即可\n" +
+      "· machineid / storage.json / 全部缓存会被清除（原文件自动备份）\n" +
+      "· 客户端 main.js 会注入16位设备ID分支（原文件自动备份，幂等）\n\n继续？")) return;
+  const r = await api("/api/trae/reset", {});
+  toast(r.output, !r.ok);
+  if (r.ok) {
+    $("#r-progress-box").style.display = "block";
+    $("#r-steps").innerHTML = "";
+    pollTraeResetJob();
+  }
+}
+
+$("#btn-trae-reset-run").addEventListener("click", startTraeReset);
+$("#btn-trae-reset-refresh").addEventListener("click", pollTraeResetJob);
+
 /* ---------- 启动 ---------- */
 loadOverview();
 loadLogs();
+loadGrowthStatus();          // 预取按钮数字(60s 服务端缓存)
+pollTraeResetJob();          // 若有正在执行的重置任务,立即恢复进度显示
 setInterval(loadOverview, 8000);
 setInterval(loadLogs, 8000);
+setInterval(() => loadGrowthStatus(), 60000);
 </script>
 </body>
 </html>

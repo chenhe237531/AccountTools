@@ -39,6 +39,7 @@ from playwright.sync_api import sync_playwright
 
 HOME = Path.home()
 PROFILE_DIR = HOME / ".workbuddy/growth-profile"
+SESSION_FILE = HOME / ".workbuddy/growth-session.json"   # Cookie 引导文件(自愈用)
 ORIGIN = "https://www.workbuddy.cn"
 GROWTH_PAGE = f"{ORIGIN}/profile/growth-center"
 
@@ -78,15 +79,23 @@ def log(msg: str):
 # 浏览器会话
 # ============================================================
 
-def launch(pw, headless: bool):
-    ctx = pw.chromium.launch_persistent_context(
+def launch(pw, visible: bool = False):
+    """启动持久化浏览器会话。
+
+    重要:workbuddy.cn 的 WAF 能识别无头浏览器(TLS/HTTP2 指纹层面,UA 伪装无效),
+    无头模式会被 401 并清除 session cookie。因此**始终使用有头模式**;
+    非交互运行时把窗口移到屏幕外,用户无感知。
+    """
+    return pw.chromium.launch_persistent_context(
         str(PROFILE_DIR),
         channel="chrome",
-        headless=headless,
-        viewport={"width": 1280, "height": 900},
-        args=["--disable-blink-features=AutomationControlled"],
+        headless=False,
+        no_viewport=not visible,
+        args=(
+            ["--window-position=-32000,-32000", "--window-size=1280,900"]
+            if not visible else ["--window-size=1280,900"]
+        ) + ["--disable-blink-features=AutomationControlled"],
     )
-    return ctx
 
 
 def is_logged_in(page) -> bool:
@@ -100,26 +109,44 @@ def is_logged_in(page) -> bool:
         return False
 
 
-def open_growth_page(ctx, headless: bool, wait_login: bool = False):
+def open_growth_page(ctx, wait_login: bool = False):
+    """打开工作页面。
+
+    日常操作使用轻量同源页(robots.txt)——只作为 fetch 的执行上下文,
+    无 JS、加载快、不产生多余流量。交互登录(wait_login)时加载真实页面。
+    会话自愈:登录态失效时自动从 SESSION_FILE 重导入 Cookie 再验证。
+    """
     page = ctx.new_page()
-    page.goto(GROWTH_PAGE, wait_until="domcontentloaded", timeout=60_000)
-    page.wait_for_timeout(3000)
-    if is_logged_in(page):
-        return page
-    if not wait_login:
-        page.close()
-        raise SystemExit("[错误] 尚未登录或登录态失效。请先执行: python3 growth.py login")
-    log("[提示] 请在打开的浏览器窗口中登录(扫码/手机号均可),等待登录完成…")
-    deadline = time.time() + 300
-    while time.time() < deadline:
+    if wait_login:
+        page.goto(GROWTH_PAGE, wait_until="domcontentloaded", timeout=60_000)
         page.wait_for_timeout(3000)
         if is_logged_in(page):
-            log("[提示] 检测到登录成功!")
-            page.goto(GROWTH_PAGE, wait_until="domcontentloaded")
-            page.wait_for_timeout(2000)
+            return page
+        log("[提示] 请在打开的浏览器窗口中登录(扫码/手机号均可),等待登录完成…")
+        deadline = time.time() + 300
+        while time.time() < deadline:
+            page.wait_for_timeout(3000)
+            if is_logged_in(page):
+                log("[提示] 检测到登录成功!")
+                return page
+        page.close()
+        raise SystemExit("[错误] 5 分钟内未完成登录,请重试 python3 growth.py login")
+    # 轻量同源页
+    page.goto(f"{ORIGIN}/robots.txt", wait_until="commit", timeout=60_000)
+    page.wait_for_timeout(1500)
+    if is_logged_in(page):
+        return page
+    # 自愈:从引导文件重导入
+    if SESSION_FILE.is_file():
+        log("[会话] 登录态失效,尝试从引导文件恢复…")
+        import_cookies(ctx, str(SESSION_FILE))
+        page.reload(wait_until="commit")
+        page.wait_for_timeout(1500)
+        if is_logged_in(page):
+            log("[会话] 恢复成功")
             return page
     page.close()
-    raise SystemExit("[错误] 5 分钟内未完成登录,请重试 python3 growth.py login")
+    raise SystemExit("[错误] 尚未登录或登录态失效。请先执行: python3 growth.py login")
 
 
 def import_cookies(ctx, cookie_file: str) -> int:
@@ -141,7 +168,8 @@ def import_cookies(ctx, cookie_file: str) -> int:
             cookie["httpOnly"] = bool(c.get("httpOnly"))
         if str(cookie["domain"]).lstrip(".").endswith("workbuddy.cn"):
             cookies.append(cookie)
-    ctx.add_cookies(cookies)
+    for cookie in cookies:  # 逐条导入,避免批量静默失败
+        ctx.add_cookies([cookie])
     return len(cookies)
 
 
@@ -250,20 +278,28 @@ def claim_all(page) -> int:
 # ============================================================
 
 def create_sandbox_session(page, agent_id=None):
-    """创建产品会话+沙盒,返回 {cid, link, token, cwd}。"""
+    """创建产品会话,返回 {cid, link, token, cwd}。
+
+    会话创建响应内联包含 session 凭据(link/token);若未内联则回退到
+    POST/GET /v2/as/conversations/{cid}/session 流程。
+    """
     body = {"conversationOrigin": "agents"}
     if agent_id:
         body["agentId"] = agent_id
     conv = data_of(api(page, "POST", API_CONV_CREATE, body))
-    cid = conv.get("conversationId") or conv.get("conversation_id") or conv.get("id")
+    cid = conv.get("id") or conv.get("conversationId") or conv.get("conversation_id")
     if not cid:
         raise RuntimeError(f"创建会话失败: {conv}")
+    sess = conv.get("session") or {}
+    if sess.get("link") and sess.get("token"):
+        return {"cid": str(cid), "link": sess["link"], "token": sess["token"],
+                "cwd": sess.get("cwd") or "/workspace"}
+    # 回退:显式创建并轮询沙盒 session
     api(page, "POST", API_CONV_SESSION.format(cid=cid), {})
-    # 轮询沙盒就绪
     for _ in range(20):
         time.sleep(3)
         s = data_of(api(page, "GET", API_CONV_SESSION.format(cid=cid)))
-        if s.get("link") and s.get("token") and s.get("sessionStatus") != "CREATING":
+        if s.get("link") and s.get("token"):
             return {"cid": str(cid), "link": s["link"], "token": s["token"],
                     "cwd": s.get("cwd") or "/workspace"}
     raise RuntimeError("沙盒 session 60 秒内未就绪")
@@ -375,26 +411,28 @@ def list_agents(page):
 # ============================================================
 
 def redeem_streak(page):
-    summary = data_of(api(page, "GET", API_REDEEM_SUMMARY))
     streak = data_of(api(page, "GET", API_STREAK))
-    log(f"  连续登录: {streak.get('streak_days', '?')} 天")
+    days = (streak.get("streak") or {}).get("days")
+    status_all = streak.get("redemption_status") or {}
+    if days is not None:
+        nxt = status_all.get("remaining_days")
+        log(f"  连续登录: {days} 天" + (f"(距下一档 {nxt} 天)" if nxt else ""))
     claimed = 0
-    for tier, key in (("7d", "tier_7d_status"), ("14d", "tier_14d_status"),
-                      ("28d", "tier_28d_status")):
-        status = (summary.get(key) or streak.get("redemption_status", {}).get(key))
-        if status == "claimable":
+    for tier in ("7d", "14d", "28d"):
+        if status_all.get(f"tier_{tier}_status") == "claimable":
             resp = api(page, "POST", API_REDEEM,
                        {"tier": tier, "client_token": f"u-{uuid.uuid4()}"})
             if resp.get("code") == 0:
                 d = data_of(resp)
-                log(f"  ✓ 兑换 {tier} 档: +⚡{d.get('credit_granted', '?')} "
-                    f"+◇{d.get('energy_granted', '?')} "
-                    f"补登卡×{d.get('cards_granted', '?')}")
+                log(f"  ✓ 兑换 {tier} 档: +⚡{d.get('credit_granted', 0)} "
+                    f"+◇{d.get('energy_granted', 0)} "
+                    f"补登卡×{d.get('cards_granted', 0)} "
+                    f"抽奖机会×{d.get('chances_granted', 0)}")
                 claimed += 1
             else:
                 log(f"  兑换 {tier} 失败: {resp.get('msg')}")
     if not claimed:
-        log("  当前没有可兑换的连续登录奖励")
+        log("  当前没有可兑换的连续登录奖励(7/14/28 天各一档)")
     return claimed
 
 
@@ -447,65 +485,51 @@ EXPERT_TASK_CODE = "expert_5"      # 召唤 5 次专家
 EXPERT_TEAM_TASK_CODE = "Expert_team_use_3"  # 召唤 3 次专家团
 
 
-def run_automation(page, do_gacha=False):
+def run_automation(page, do_gacha=False, try_chat=False):
     log("== 第 1 步:接受所有任务 ==")
     accept_all(page)
 
-    log("")
-    log("== 第 2 步:自动完成聊天类任务(真实对话) ==")
-    tasks = {t.get("task_code"): t for t in fetch_tasks(page)}
-    # chat_5:和 AI 聊天 5 次
-    t = tasks.get(CHAT_TASK_CODE)
-    if t and t.get("accept_status") not in ("claimed", "completed"):
-        prog = t.get("progress") or {}
-        need = (prog.get("target") or 5) - (prog.get("current") or 0)
-        for i in range(max(0, need)):
-            log(f"  [chat_5] 第 {i + 1}/{need} 次对话…")
-            do_chat(page, f"你好,这是一次打卡对话({i + 1})。请回复:收到。")
-            time.sleep(3)
-    # expert_5:召唤 5 位不同专家并对话
-    t = tasks.get(EXPERT_TASK_CODE)
-    if t and t.get("accept_status") not in ("claimed", "completed"):
-        agents = list_agents(page)
-        log(f"  [expert_5] 可用专家/agents: {len(agents)} 个")
-        prog = t.get("progress") or {}
-        need = (prog.get("target") or 5) - (prog.get("current") or 0)
-        done = 0
-        for ag in agents:
-            if done >= need:
-                break
-            aid = ag.get("agentId") or ag.get("id")
-            name = ag.get("name") or aid
-            log(f"  [expert_5] 召唤专家: {name}")
-            if do_chat(page, "你好,请简单介绍一下你能做什么?", agent_id=aid, quiet=True):
-                done += 1
-                log(f"    ✓ 完成 ({done}/{need})")
-            time.sleep(3)
-        if done < need:
-            log(f"  [expert_5] 专家对话完成 {done}/{need},可稍后重试 run")
+    if try_chat:
+        log("")
+        log("== 第 2 步(实验):尝试自动完成聊天类任务 ==")
+        log("  说明:纯 API 会话的云沙盒可能无法启动(服务端限制),失败属正常。")
+        tasks = {t.get("task_code"): t for t in fetch_tasks(page)}
+        t = tasks.get(CHAT_TASK_CODE)
+        if t and t.get("accept_status") not in ("claimed", "completed"):
+            prog = t.get("progress") or {}
+            need = (prog.get("target") or 5) - (prog.get("current") or 0)
+            done = 0
+            for i in range(max(0, need)):
+                log(f"  [chat_5] 第 {i + 1}/{need} 次对话…")
+                if do_chat(page, f"你好,这是一次打卡对话({i + 1})。请回复:收到。"):
+                    done += 1
+                time.sleep(3)
+                if i == 0 and done == 0:
+                    log("  首次尝试失败,跳过剩余(沙盒不可用)")
+                    break
 
     log("")
-    log("== 第 3 步:领取已完成任务奖励 ==")
+    log("== 第 2 步:领取已完成任务奖励 ==")
     claim_all(page)
 
     log("")
-    log("== 第 4 步:兑换连续登录奖励 ==")
+    log("== 第 3 步:兑换连续登录奖励 ==")
     redeem_streak(page)
 
     log("")
-    log("== 第 5 步:抽奖 ==")
+    log("== 第 4 步:抽奖 ==")
     draw_lottery(page)
 
     if do_gacha:
         log("")
-        log("== 第 6 步:开 Buddy 盲盒 ==")
+        log("== 第 5 步:开 Buddy 盲盒 ==")
         open_gacha(page)
 
     log("")
     log("== 最新状态 ==")
     show_status(page)
-    log("提示:桌面端专属任务(创建画布/换主题/轻量云专家等)请在 WorkBuddy 客户端完成,")
-    log("      完成后再运行 python3 growth.py run 即可自动领奖。")
+    log("提示:产品体验类任务(聊天/画布/专家/技能/模板等)在 WorkBuddy 客户端正常使用即累计,")
+    log("      完成后运行 python3 growth.py run 自动领奖。")
 
 
 def main():
@@ -518,18 +542,35 @@ def main():
     ap.add_argument("message", nargs="?", help="chat 命令的消息内容")
     ap.add_argument("--cookies", help="login:导入 Cookie JSON 文件(浏览器插件导出格式)")
     ap.add_argument("--gacha", action="store_true", help="run:同时开 Buddy 盲盒")
+    ap.add_argument("--try-chat", action="store_true",
+                    help="run:尝试 API 自动聊天(实验,云沙盒受限时可能失败)")
     args = ap.parse_args()
 
     PROFILE_DIR.mkdir(parents=True, exist_ok=True)
 
     if args.command == "login":
         with sync_playwright() as pw:
-            ctx = launch(pw, headless=False)
+            ctx = launch(pw, visible=True)
             if args.cookies:
                 n = import_cookies(ctx, args.cookies)
                 log(f"[登录] 已导入 {n} 条 workbuddy.cn Cookie")
+                # 保存引导文件(会话自愈用),权限 600
+                SESSION_FILE.write_text(
+                    Path(args.cookies).read_text(encoding="utf-8"), encoding="utf-8")
+                SESSION_FILE.chmod(0o600)
+                # 立即用轻量页面验证
+                page = ctx.new_page()
+                page.goto(f"{ORIGIN}/robots.txt", wait_until="commit", timeout=60_000)
+                page.wait_for_timeout(1500)
+                if is_logged_in(page):
+                    log("[登录] Cookie 有效!会话已保存,之后可直接 status / run。")
+                else:
+                    log("[错误] Cookie 无效或已过期,请重新导出,或直接扫码登录。")
+                page.wait_for_timeout(3000)
+                ctx.close()
+                return
             log(f"[登录] 浏览器窗口已打开(会话目录: {PROFILE_DIR})")
-            page = open_growth_page(ctx, headless=False, wait_login=True)
+            page = open_growth_page(ctx, wait_login=True)
             log("[登录] 登录成功!会话已持久保存,之后可直接 status / run。")
             log("[登录] 8 秒后自动关闭窗口…")
             page.wait_for_timeout(8000)
@@ -537,9 +578,9 @@ def main():
         return
 
     with sync_playwright() as pw:
-        ctx = launch(pw, headless=True)
+        ctx = launch(pw, visible=False)   # 有头模式+窗口移屏幕外(WAF 拒绝无头)
         try:
-            page = open_growth_page(ctx, headless=True)
+            page = open_growth_page(ctx)
             if args.command == "status":
                 show_status(page)
             elif args.command == "accept":
@@ -556,7 +597,7 @@ def main():
                 msg = args.message or "你好"
                 do_chat(page, msg)
             elif args.command == "run":
-                run_automation(page, do_gacha=args.gacha)
+                run_automation(page, do_gacha=args.gacha, try_chat=args.try_chat)
         finally:
             ctx.close()
 

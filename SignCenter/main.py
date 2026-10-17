@@ -191,6 +191,17 @@ WB_AUTH_FILE = HOME / "Library/Application Support/CodeBuddyExtension/Data/Publi
 WB_SNAP_DIR = HOME / ".workbuddy/account-switcher-snapshots"
 WB_SCRIPT = next((p for p in [HOME / ".workbuddy/wb-switch.sh", ROOT / "Workbuddy/wb-switch.sh"] if p.is_file()), None)
 
+# token 直连账号池（Workbuddy/wb_import.py 管理，签到不经桌面应用切换）
+WB_IMPORT_PATH = ROOT / "Workbuddy" / "wb_import.py"
+_wbi = None
+if WB_IMPORT_PATH.is_file():
+    try:
+        _wbi_spec = importlib.util.spec_from_file_location("wb_import", WB_IMPORT_PATH)
+        _wbi = importlib.util.module_from_spec(_wbi_spec)
+        _wbi_spec.loader.exec_module(_wbi)
+    except Exception as _e:  # noqa: BLE001
+        print(f"[警告] wb_import 模块加载失败: {_e}", file=sys.stderr)
+
 
 def _wb_read_account(path: Path):
     try:
@@ -219,6 +230,25 @@ def wb_state() -> dict:
                 "mtime": int(f.stat().st_mtime) if f.exists() else 0,
                 "active": bool(current and uid != "?" and uid == current.get("uid")),
             })
+    # 合并 token 直连账号（name 以 "token:" 前缀区分，不参与桌面切换）
+    if _wbi is not None:
+        try:
+            for t in _wbi.list_accounts():
+                sub = f"uid {t['uid'][:8]} · API 直连签到"
+                if t.get("phone"):
+                    sub = f"尾号 {t['phone'][-4:]} · " + sub
+                if t.get("refreshLeftDays", 99) < 7:
+                    sub += f" · ⚠凭证 {t['refreshLeftDays']} 天后过期"
+                accounts.append({
+                    "name": f"token:{t['uid']}",
+                    "display": t["nickname"],
+                    "sub": sub,
+                    "mtime": int(t.get("mtime") or 0),
+                    "active": False,
+                    "token": True,
+                })
+        except Exception:  # noqa: BLE001
+            pass
     cur_label = None
     if current:
         hit = next((a["display"] for a in accounts if a["active"]), None)
@@ -403,10 +433,148 @@ def trae_delete(name: str):
 
 
 # --------------------------------------------------------------------------
+# Trae 设备重置（复用 Trae/trae_reset.py，Windows 版《trae重置工具6.0》的 macOS 移植）
+# --------------------------------------------------------------------------
+TRAE_RESET_PATH = ROOT / "Trae/trae_reset.py"
+_trae_reset_lock = threading.Lock()
+_trae_reset_job: dict = {"running": False, "steps": [], "result": None,
+                         "startedAt": "", "finishedAt": ""}
+
+
+def trae_reset_run_bg() -> dict:
+    """后台线程执行 Trae 设备重置，逐行进度写入 _trae_reset_job。"""
+    with _trae_reset_lock:
+        if _trae_reset_job["running"]:
+            return {"ok": False, "output": "已有设备重置任务在执行中"}
+        # 与签到/切号互斥：非阻塞抢全局签到锁，避免重置中途切号（或切号中途重置）
+        if not _checkin_lock.acquire(blocking=False):
+            return {"ok": False, "output": "签到/切号任务正在执行，请稍后再试"}
+        _trae_reset_job.update(running=True, steps=[], result=None,
+                               startedAt=time.strftime("%H:%M:%S"), finishedAt="")
+
+    def progress(msg: str):
+        with _trae_reset_lock:
+            _trae_reset_job["steps"].append({"ts": time.strftime("%H:%M:%S"),
+                                             "msg": msg})
+
+    def worker():
+        try:
+            proc = subprocess.Popen(
+                [sys.executable, str(TRAE_RESET_PATH), "--cli", "--json"],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, bufsize=1)
+            last_json = None
+            for line in proc.stdout:
+                line = line.rstrip("\n")
+                if not line.strip():
+                    continue
+                # 脚本末行输出的 JSON 结果不进日志，普通行作为进度流式展示
+                if line.startswith("{") and line.endswith("}"):
+                    try:
+                        last_json = json.loads(line)
+                        continue
+                    except Exception:
+                        pass
+                progress(line)
+            try:
+                proc.wait(timeout=600)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                last_json = {"ok": False, "output": "执行超时(600s)，已终止"}
+            res = last_json or {"ok": proc.returncode == 0,
+                                "output": f"exit={proc.returncode}"}
+            with _trae_reset_lock:
+                _trae_reset_job.update(running=False, result=res,
+                                       finishedAt=time.strftime("%H:%M:%S"))
+            append_log("trae", bool(res.get("ok")),
+                       f"[设备重置] {res.get('output', '')}", trigger="trae-reset")
+        except Exception as e:  # noqa: BLE001
+            with _trae_reset_lock:
+                _trae_reset_job.update(
+                    running=False, result={"ok": False, "output": f"执行异常: {e}"},
+                    finishedAt=time.strftime("%H:%M:%S"))
+            append_log("trae", False, f"[设备重置] 异常 {type(e).__name__}: {e}",
+                       trigger="trae-reset")
+        finally:
+            _checkin_lock.release()
+
+    threading.Thread(target=worker, daemon=True).start()
+    return {"ok": True, "output": "已开始执行设备重置（后台运行）"}
+
+
+# --------------------------------------------------------------------------
 # 平台适配层 —— WorkBuddy 真实签到（经 wbipc 让应用代领积分）
 # --------------------------------------------------------------------------
 WB_CHECKIN = HERE / "wb_checkin.py"
 TRAE_CHECKIN_LOG = HOME / ".trae-cn" / "autocheckin.log"
+
+# --------------------------------------------------------------------------
+# WorkBuddy 成长任务自动化（wb_growth.py：wbipc 轻量 API + 桌面端 CDP）
+# --------------------------------------------------------------------------
+_wg = None
+try:
+    import wb_growth as _wg_mod
+    _wg = _wg_mod
+except Exception as _e:  # noqa: BLE001
+    print(f"[警告] 成长任务模块加载失败: {_e}", file=sys.stderr)
+
+_growth_job_lock = threading.Lock()
+_growth_job: dict = {"id": 0, "running": False, "steps": [], "result": None,
+                     "startedAt": "", "finishedAt": ""}
+
+
+def growth_status_cached(max_age: int = 60):
+    """带 60s 缓存的任务概览（供前端按钮数字与弹窗列表）。"""
+    cache = getattr(growth_status_cached, "_cache", None)
+    now = time.time()
+    if cache and now - cache[0] < max_age:
+        return cache[1]
+    if _wg is None:
+        return {"ok": False, "error": "wb_growth 模块不可用"}
+    try:
+        st = _wg.get_status()
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": str(e)}
+    growth_status_cached._cache = (now, st)
+    return st
+
+
+def growth_run_bg(codes: list) -> dict:
+    """后台线程执行勾选的成长任务，进度写入全局 _growth_job。"""
+    with _growth_job_lock:
+        if _growth_job["running"]:
+            return {"ok": False, "output": "已有成长任务在执行中"}
+        _growth_job.update(id=_growth_job["id"] + 1, running=True, steps=[],
+                           result=None, startedAt=time.strftime("%H:%M:%S"), finishedAt="")
+
+    job_id = _growth_job["id"]
+
+    def progress(msg: str):
+        with _growth_job_lock:
+            _growth_job["steps"].append({"ts": time.strftime("%H:%M:%S"), "msg": msg})
+
+    def worker():
+        try:
+            if _wg is None:
+                raise RuntimeError("wb_growth 模块不可用")
+            res = _wg.run_tasks(codes, progress=progress)
+            with _growth_job_lock:
+                _growth_job.update(running=False, result=res,
+                                   finishedAt=time.strftime("%H:%M:%S"))
+            append_log("workbuddy", bool(res.get("ok")),
+                       f"[成长任务] {res.get('output', '')}", trigger="growth")
+        except Exception as e:  # noqa: BLE001
+            with _growth_job_lock:
+                _growth_job.update(running=False,
+                                   result={"ok": False, "output": f"执行异常: {e}", "results": []},
+                                   finishedAt=time.strftime("%H:%M:%S"))
+            append_log("workbuddy", False, f"[成长任务] 异常 {type(e).__name__}: {e}", trigger="growth")
+        finally:
+            growth_status_cached._cache = None  # 清缓存,让前端立即看到新进度
+
+    threading.Thread(target=worker, daemon=True).start()
+    return {"ok": True, "output": f"已开始执行 {len(codes)} 个任务(后台)", "job": job_id}
+
 
 
 def wb_claim(account_display: str = "", since_ts: int = 0):
@@ -521,6 +689,16 @@ def platform_checkin(pid: str, only_account: str | None = None, trigger: str = "
 
         for name in targets:
             try:
+                if name.startswith("token:"):
+                    # token 直连账号：直接调官方 API 领取，不切换桌面应用
+                    if _wbi is None:
+                        raise RuntimeError("wb_import 模块不可用")
+                    res = _wbi.checkin_accounts(name.split(":", 1)[1])
+                    r0 = res[0] if res else {"ok": False, "msg": "账号不存在"}
+                    append_log(pid, bool(r0.get("ok")), f"[签到] {disp[name]}: {r0.get('msg', '')}",
+                               account=disp[name], trigger=trigger)
+                    results.append({"account": disp[name], "ok": bool(r0.get("ok")), "msg": r0.get("msg", "")})
+                    continue
                 cur = pf["state"]()
                 active = next((a["name"] for a in cur["accounts"] if a["active"]), None)
                 switched = False
@@ -655,6 +833,14 @@ class SettingsBody(BaseModel):
     restore_after_checkin: bool | None = None
 
 
+class GrowthRunBody(BaseModel):
+    tasks: list[str] = []
+
+
+class ImportBody(BaseModel):
+    data: str = ""
+
+
 def _valid_name(name: str) -> bool:
     return isinstance(name, str) and bool(NAME_RE.match(name))
 
@@ -749,6 +935,8 @@ def save(pid: str, body: SaveBody):
 def switch(pid: str, body: NameBody):
     if pid not in PLATFORMS:
         return JSONResponse({"ok": False, "output": "未知平台"}, 404)
+    if body.name.startswith("token:"):
+        return {"ok": False, "output": "导入的 token 账号为 API 直连签到，无需切换桌面应用"}
     if not _valid_name(body.name):
         return {"ok": False, "output": "无效的快照名"}
     r = PLATFORMS[pid]["switch"](body.name)
@@ -761,6 +949,12 @@ def switch(pid: str, body: NameBody):
 def delete(pid: str, body: NameBody):
     if pid not in PLATFORMS:
         return JSONResponse({"ok": False, "output": "未知平台"}, 404)
+    if pid == "workbuddy" and body.name.startswith("token:"):
+        if _wbi is None:
+            return {"ok": False, "output": "wb_import 模块不可用"}
+        r = _wbi.remove_account(body.name.split(":", 1)[1])
+        append_log(pid, r.get("ok", False), f"[删除] {r.get('output', '')}", trigger="delete")
+        return r
     if not _valid_name(body.name):
         return {"ok": False, "output": "无效的快照名"}
     return PLATFORMS[pid]["delete"](body.name)
@@ -800,6 +994,61 @@ def settings(body: SettingsBody):
 @app.get("/api/logs")
 def logs(limit: int = 100):
     return {"logs": read_logs(max(1, min(limit, 500)))}
+
+
+# ---- WorkBuddy 成长任务 ----
+@app.get("/api/workbuddy/growth/status")
+def growth_status_api():
+    return growth_status_cached()
+
+
+@app.post("/api/workbuddy/growth/run")
+def growth_run_api(body: GrowthRunBody):
+    if _wg is None:
+        return {"ok": False, "output": "wb_growth 模块不可用"}
+    codes = [c for c in body.tasks if isinstance(c, str) and c in _wg.TASK_META]
+    if not codes:
+        return {"ok": False, "output": "未选择可执行的任务"}
+    return growth_run_bg(codes)
+
+
+@app.get("/api/workbuddy/growth/job")
+def growth_job_api():
+    with _growth_job_lock:
+        return dict(_growth_job)
+
+
+@app.post("/api/platform/workbuddy/import")
+def wb_import_api(body: ImportBody):
+    """导入 WorkBuddy 登录凭证 JSON（前端读取文件原文后以文本上传）。"""
+    if _wbi is None:
+        return {"ok": False, "output": "未找到 Workbuddy/wb_import.py"}
+    if not body.data.strip():
+        return {"ok": False, "output": "文件内容为空"}
+    if len(body.data) > 1_000_000:
+        return {"ok": False, "output": "文件过大（>1MB），请确认选择的是凭证 JSON 文件"}
+    r = _wbi.import_data(body.data)
+    if r.get("imported"):
+        append_log("workbuddy", True, "[导入] " + r["output"] + ": "
+                   + ", ".join(i["nickname"] for i in r["imported"]), trigger="import")
+    elif r.get("skipped"):
+        append_log("workbuddy", False, "[导入] " + r["output"] + ": "
+                   + "; ".join(f"{s['name']}({s['reason']})" for s in r["skipped"]), trigger="import")
+    return r
+
+
+# ---- Trae 设备重置 ----
+@app.post("/api/trae/reset")
+def trae_reset_api():
+    if not TRAE_RESET_PATH.is_file():
+        return {"ok": False, "output": "未找到 Trae/trae_reset.py"}
+    return trae_reset_run_bg()
+
+
+@app.get("/api/trae/reset/job")
+def trae_reset_job_api():
+    with _trae_reset_lock:
+        return dict(_trae_reset_job)
 
 
 def main():
