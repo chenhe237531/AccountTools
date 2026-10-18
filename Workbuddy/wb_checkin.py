@@ -11,7 +11,7 @@
       POST /v2/billing/meter/daily-checkin             领取(重复领取返回 code=10001)
       POST /v2/billing/meter/checkin-activity-status   状态查询
 
-用法(stdout 输出单行 JSON,供 SignCenter 解析):
+用法(stdout 输出单行 JSON,供控制台(app)解析):
   python3 wb_checkin.py status    # 查询当前账号签到状态
   python3 wb_checkin.py claim     # 领取今日积分
 """

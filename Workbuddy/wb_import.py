@@ -19,7 +19,7 @@
   [{ uid, nickname, domain, access_token, refresh_token, expiresAt, ... }]
   也支持嵌套 auth_raw.auth.{accessToken, refreshToken, domain, expiresAt}
 
-用法(stdout 最后一行输出单行 JSON,供 SignCenter 解析):
+用法(stdout 最后一行输出单行 JSON,供控制台(app)解析):
   python3 wb_import.py import <file.json>     # 导入并验证凭证有效性
   python3 wb_import.py list                   # 列出已导入账号(不显示 token)
   python3 wb_import.py status [uid|all]       # 查询签到状态

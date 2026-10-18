@@ -1,0 +1,113 @@
+# 桌面端打包：DMG（macOS arm64）+ Windows 安装包（x64 NSIS）
+#
+# 仅手动触发（Actions 页面 → 桌面端打包 → Run workflow），不做定时/推送触发。
+# 产物上传为 workflow artifact，不做发布（未签名：mac 首次打开需右键→打开，
+# Windows 会弹 SmartScreen 提示，选「仍要运行」）。
+#
+# 流水线：PyInstaller 打包 Python 后端（onefile）→ 拷入 desktop/backend/ →
+# electron-builder 打整包（后端作为 extraResources 嵌入 .app / 安装目录）。
+name: 桌面端打包
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "版本号（留空则使用 desktop/package.json 中的版本）"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS (arm64 DMG)
+            os: macos-latest       # Apple Silicon runner
+            platform: mac
+          - name: Windows (x64 安装包)
+            os: windows-latest
+            platform: win
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 设置版本号
+        if: ${{ inputs.version != '' }}
+        shell: bash
+        run: |
+          cd desktop
+          npm version "${{ inputs.version }}" --no-git-tag-version --allow-same-version
+
+      # ---------- 1. Python 后端（onefile） ----------
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 安装后端依赖（核心三项，不含 playwright）
+        run: pip install fastapi "uvicorn[standard]" pydantic pyinstaller
+
+      - name: PyInstaller 打包后端
+        run: pyinstaller scripts/backend.spec --noconfirm --clean
+
+      - name: 校验后端产物
+        shell: bash
+        run: |
+          if [[ "${{ matrix.platform }}" == "win" ]]; then
+            test -f dist/agenttools-backend.exe
+          else
+            test -f dist/agenttools-backend
+            dist/agenttools-backend --exec-script --help >/dev/null 2>&1 || true
+          fi
+          mkdir -p desktop/backend
+          if [[ "${{ matrix.platform }}" == "win" ]]; then
+            cp dist/agenttools-backend.exe desktop/backend/
+          else
+            cp dist/agenttools-backend desktop/backend/
+          fi
+
+      # ---------- 2. Electron 桌面壳 ----------
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: 安装桌面端依赖
+        working-directory: desktop
+        run: npm install
+
+      - name: electron-builder 打包（mac DMG）
+        if: ${{ matrix.platform == 'mac' }}
+        working-directory: desktop
+        env:
+          # 无签名证书：跳过 codesign，产物为未签名 DMG
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npx electron-builder --mac dmg --arm64 --publish never
+
+      - name: electron-builder 打包（win NSIS）
+        if: ${{ matrix.platform == 'win' }}
+        working-directory: desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npx electron-builder --win nsis --x64 --publish never
+
+      # ---------- 3. 上传产物 ----------
+      - name: 上传 DMG
+        if: ${{ matrix.platform == 'mac' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: AccountTools-macos-arm64
+          path: desktop/dist-electron/*.dmg
+          if-no-files-found: error
+
+      - name: 上传 Windows 安装包
+        if: ${{ matrix.platform == 'win' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: AccountTools-windows-x64
+          path: desktop/dist-electron/*setup.exe
+          if-no-files-found: error

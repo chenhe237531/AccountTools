@@ -1,0 +1,80 @@
+{
+  "name": "accounttools-desktop",
+  "version": "2.0.0",
+  "description": "AccountTools 桌面端（Electron 壳 + Python 后端 sidecar）",
+  "main": "main.js",
+  "author": "nitai",
+  "license": "MIT",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder",
+    "dist:mac": "electron-builder --mac dmg --arm64",
+    "dist:win": "electron-builder --win nsis --x64"
+  },
+  "devDependencies": {
+    "electron": "^37.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "com.nitai.accounttools",
+    "productName": "AccountTools",
+    "copyright": "Copyright © 2026",
+    "directories": {
+      "output": "dist-electron",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "splash.html",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "backend",
+        "to": "backend",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "publish": null,
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "不使用麦克风",
+        "NSCameraUsageDescription": "不使用摄像头"
+      }
+    },
+    "dmg": {
+      "title": "AccountTools ${version}",
+      "artifactName": "AccountTools-${version}-mac-${arch}.dmg"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "AccountTools-${version}-win-${arch}-setup.${ext}"
+    }
+  }
+}

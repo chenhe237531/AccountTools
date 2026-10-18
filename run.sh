@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 多平台自动签到中心 —— 一键启动
+# AccountTools Web 控制台 —— 一键启动（首次自动创建 .venv 并安装依赖）
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -9,4 +9,4 @@ if [[ ! -x .venv/bin/python ]]; then
   .venv/bin/pip install -q -r requirements.txt
 fi
 
-exec .venv/bin/python main.py "$@"
+exec .venv/bin/python -m app "$@"

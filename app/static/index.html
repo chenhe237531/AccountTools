@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="alternate icon" href="/favicon.ico">
-<title>多平台自动签到中心</title>
+<title>AccountTools · 多平台账号中心</title>
 <style>
   :root {
     --bg: #0a0e14;
@@ -78,6 +78,7 @@
   }
   .switch input:checked + .slider { background: var(--accent); }
   .switch input:checked + .slider::before { transform: translateX(16px); }
+  .switch input:disabled + .slider { opacity: .4; cursor: not-allowed; }
   /* 状态行 */
   .status-line { font-size: 12.5px; color: var(--text-dim); display: flex; align-items: center; gap: 6px; }
   .status-line .ok-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
@@ -97,9 +98,7 @@
   .chip.active::before {
     content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--green);
   }
-  .chip.signed::after {
-    content: "✓"; color: var(--green); font-size: 11px;
-  }
+  .chip.signed::after { content: "✓"; color: var(--green); font-size: 11px; }
   .chip .x {
     font-style: normal; color: #556274; font-size: 13px; line-height: 1;
     padding: 0 1px; border-radius: 3px;
@@ -119,21 +118,19 @@
   .btn:hover { background: var(--accent-hover); }
   .btn:disabled { background: #2a3648; color: #66748a; cursor: not-allowed; }
   .btn.busy { opacity: .6; pointer-events: none; }
-  .card-actions { display: flex; gap: 8px; }
-  .card-actions .btn { flex: 1; }
-  .btn-ghost {
-    background: #1a2333; color: var(--text);
-    border: 1px solid var(--border);
-  }
+  .card-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .card-actions .btn { flex: 1; min-width: 96px; }
+  .btn-ghost { background: #1a2333; color: var(--text); border: 1px solid var(--border); }
   .btn-ghost:hover { background: #212d42; }
   .btn-ghost:disabled { background: #152030; color: #56657c; border-color: #1c2636; }
+  .btn-feature { background: #1a2333; color: var(--text); border: 1px solid var(--border); }
+  .btn-feature:hover { background: #212d42; }
   /* ---------- 底部操作栏 ---------- */
   .actionbar {
     display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
     margin-top: 22px; padding: 14px 4px;
   }
   .actionbar .btn { width: auto; padding: 9px 26px; }
-  .actionbar .spacer { flex: 1; }
   .auto-info { font-size: 12px; color: var(--text-dim); display: flex; align-items: center; gap: 6px; }
   .toggle-item { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--text-dim); }
   /* ---------- 日志 ---------- */
@@ -185,21 +182,21 @@
     background: #0d1420; border: 1px solid var(--border); color: var(--text);
     border-radius: 7px; padding: 7px 10px; font-size: 14px;
   }
-  .modal .modal-btns { display: flex; gap: 10px; margin-top: 16px; }
+  .modal .modal-btns { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
   .modal .modal-btns .btn { width: auto; padding: 8px 22px; }
-  /* ---------- 成长任务 ---------- */
+  /* ---------- 成长任务等 job 特性 ---------- */
   .btn-growth {
     background: linear-gradient(180deg, rgba(99,102,241,.22), rgba(99,102,241,.10));
-    border-color: rgba(129,140,248,.5); color: #c7d2fe; font-weight: 600;
+    border: 1px solid rgba(129,140,248,.5); color: #c7d2fe; font-weight: 600;
   }
-  .btn-growth:hover { border-color: #818cf8; }
+  .btn-growth:hover { border-color: #818cf8; background: linear-gradient(180deg, rgba(99,102,241,.3), rgba(99,102,241,.12)); }
   .btn-growth.running { animation: gpulse 1.6s infinite; }
-  /* ---------- Trae 设备重置 ---------- */
+  /* ---------- 设备重置等 job 特性 ---------- */
   .btn-reset {
     background: linear-gradient(180deg, rgba(14,165,233,.22), rgba(14,165,233,.10));
     border: 1px solid rgba(56,189,248,.5); color: #bae6fd; font-weight: 600;
   }
-  .btn-reset:hover { border-color: #38bdf8; }
+  .btn-reset:hover { border-color: #38bdf8; background: linear-gradient(180deg, rgba(14,165,233,.3), rgba(14,165,233,.12)); }
   .btn-reset.running { animation: gpulse 1.6s infinite; }
   @keyframes gpulse { 0%,100%{opacity:1} 50%{opacity:.55} }
   .modal.wide { width: 620px; }
@@ -244,7 +241,7 @@
 
 <div class="titlebar">
   <span class="dot"></span>
-  <h1>多平台自动签到中心</h1>
+  <h1>AccountTools · 多平台账号中心</h1>
 </div>
 
 <div class="subtitle">
@@ -259,7 +256,7 @@
   <button class="btn" id="btn-checkin-all" title="对所有已启用平台执行「全部账号签到」">全部平台签到</button>
   <button class="btn btn-ghost" id="btn-set-time">修改自动签到时间</button>
   <button class="btn btn-ghost" id="btn-help">使用教程</button>
-  <div class="spacer"></div>
+  <div class="spacer" style="flex:1"></div>
   <span class="auto-info" id="auto-info">每天 --:-- 自动签到 · 全程无人值守</span>
   <span class="toggle-item">自动补签 <label class="switch"><input type="checkbox" id="tg-resign"><span class="slider"></span></label></span>
   <span class="toggle-item">自动签到 <label class="switch"><input type="checkbox" id="tg-auto"><span class="slider"></span></label></span>
@@ -290,10 +287,10 @@
   </div>
 </div>
 
-<!-- 成长任务 modal -->
+<!-- 成长任务 modal（renderer="growth-tasks" 专用） -->
 <div class="modal-mask" id="modal-growth">
   <div class="modal wide">
-    <h3>WorkBuddy 成长任务</h3>
+    <h3 id="growth-title">WorkBuddy 成长任务</h3>
     <div class="g-head" id="g-head"><span class="stat">加载中…</span></div>
     <div class="g-list" id="g-list"></div>
     <div class="g-progress-box" id="g-progress-box" style="display:none">
@@ -312,23 +309,17 @@
   </div>
 </div>
 
-<!-- Trae 设备重置 modal -->
-<div class="modal-mask" id="modal-trae-reset">
+<!-- 通用 job 特性 modal（设备重置等后台长任务） -->
+<div class="modal-mask" id="modal-feature">
   <div class="modal wide">
-    <h3>Trae CN · 本机设备重置</h3>
-    <p>把本机 Trae 识别为<b>全新设备</b>（macOS 版《trae重置工具 6.0》，适用于「设备数量已达上限」时）：</p>
-    <ul>
-      <li>重写 <code>machineid</code> 与 <code>storage.json</code> 三个 telemetry 设备标识，清除登录凭据键（会掉线），清空全部本地缓存；</li>
-      <li>给客户端 <code>main.js</code> 注入 16 位设备ID读取分支（幂等，原始文件自动备份）；</li>
-      <li>为每个数据目录写入全新 16 位设备ID。</li>
-    </ul>
-    <p style="color:var(--yellow)">执行前请<b>完全退出 Trae</b>（工具也会自动检测并拒绝）。重置后重新打开 Trae，直接点个人用户登录即可恢复，请勿清理浏览器缓存。</p>
-    <div class="g-progress-box" id="r-progress-box" style="display:none">
-      <div class="g-steps" id="r-steps"></div>
+    <h3 id="f-title">特性</h3>
+    <div id="f-desc"></div>
+    <div class="g-progress-box" id="f-progress-box" style="display:none">
+      <div class="g-steps" id="f-steps"></div>
     </div>
     <div class="modal-btns">
-      <button class="btn" id="btn-trae-reset-run">开始设备重置</button>
-      <button class="btn btn-ghost" id="btn-trae-reset-refresh">刷新状态</button>
+      <button class="btn" id="f-run">开始执行</button>
+      <button class="btn btn-ghost" id="f-refresh">刷新状态</button>
       <button class="btn btn-ghost" data-close>关闭</button>
     </div>
   </div>
@@ -340,15 +331,16 @@
     <h3>使用教程</h3>
     <ul>
       <li><b>添加账号</b>：先在对应桌面应用里登录账号，然后点卡片里的 <code>+ 添加账号</code>，把当前登录态保存为快照。</li>
-      <li><b>导入 JSON</b>（WorkBuddy 卡片）：选择外部导出的登录凭证 JSON（含 access/refresh token，支持单对象或数组、平铺或 <code>auth_raw</code> 嵌套格式）。导入时自动验证有效性，账号以虚线紫色 chip 展示，签到时直接经官方 API 领取积分，<b>不切换、不重启桌面应用</b>；token 过期会自动用 refresh_token 续期。重复导入同一账号即更新凭证。</li>
-      <li><b>切换账号</b>：点击账号名 chip 即可切换。WorkBuddy 热加载秒切；Trae / Qoder 会先退出应用再重启（请保存好编辑器内容）。</li>
+      <li><b>导入 JSON</b>（支持的卡片会显示「⬆ 导入 JSON」）：选择外部导出的登录凭证 JSON（含 access/refresh token）。导入时自动验证有效性，账号以虚线紫色 chip 展示，签到时直接经官方 API 领取积分，<b>不切换、不重启桌面应用</b>；token 过期会自动用 refresh_token 续期。重复导入同一账号即更新凭证。</li>
+      <li><b>切换账号</b>：点击账号名 chip 即可切换。支持热加载的应用秒切；其他会先退出应用再重启（请保存好编辑器内容）。</li>
       <li><b>立即签到</b>（卡片蓝色按钮）：只签到<em>当前登录</em>的那个账号——它已是当前账号，不会重启应用，秒级完成。</li>
-      <li><b>全部签到</b>（卡片灰色按钮）：依次切换该软件的<em>所有账号</em>各签到一次，完成后自动切回原账号。Trae/Qoder 每次切换都会退出并重启应用，账号多时耗时较长。</li>
+      <li><b>全部签到</b>（卡片灰色按钮）：依次切换该软件的<em>所有账号</em>各签到一次，完成后自动切回原账号。</li>
       <li><b>全部平台签到</b>（底部蓝色按钮）：对所有已启用平台执行「全部签到」。</li>
       <li><b>删除账号</b>：点击账号 chip 上的 ×，仅删除本地快照，不影响应用内登录。</li>
       <li><b>自动签到</b>：到底部设定时间后自动执行「全部签到」；需保持本服务运行。</li>
-      <li><b>设备重置</b>（Trae 卡片）：切号过多提示「设备数量已达上限」时使用。重置本机设备标识（machineid / storage.json / 全部缓存），并给客户端注入16位设备ID分支，让 Trae 把本机识别为全新设备。需先完全退出 Trae；重置后账号掉线属正常，重新打开 Trae 直接点个人用户登录即可。命令行：<code>python3 Trae/trae_reset.py --cli</code>。</li>
-      <li><b>高级</b>：在 <code>data/config.json</code> 里可为平台配置 <code>checkin_command</code> 钩子（签到时执行的 shell 命令，可用 <code>$SIGN_PLATFORM</code> / <code>$SIGN_ACCOUNT</code> 变量），接入真实签到 API。</li>
+      <li><b>设备重置</b>（Trae 卡片）：切号过多提示「设备数量已达上限」时使用。需先完全退出 Trae；重置后账号掉线属正常，重新打开 Trae 直接点个人用户登录即可。</li>
+      <li><b>高级</b>：在数据目录的 <code>config.json</code> 里可为平台配置 <code>checkin_command</code> 钩子（签到时执行的 shell 命令，可用 <code>$SIGN_PLATFORM</code> / <code>$SIGN_ACCOUNT</code> 变量），接入真实签到 API。</li>
+      <li><b>扩展</b>：本控制台由插件化适配器驱动（<code>app/agents/</code>），新增软件 agent 只需按 <code>_template.py</code> 添加一个适配器文件。</li>
     </ul>
     <div class="modal-btns">
       <button class="btn btn-ghost" data-close>关闭</button>
@@ -361,6 +353,7 @@ const $ = (s) => document.querySelector(s);
 let OVERVIEW = null;
 let busy = false;
 
+/* ============ 基础工具 ============ */
 function toast(msg, isErr) {
   const t = $("#toast");
   t.textContent = msg;
@@ -379,7 +372,25 @@ async function api(path, body) {
   return r.json();
 }
 
-/* ---------- 渲染 ---------- */
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
+
+function setBusy(b) {
+  busy = b;
+  document.querySelectorAll(".btn").forEach(x => x.classList.toggle("busy", b));
+}
+
+function platformOf(pid) { return OVERVIEW?.platforms?.find(x => x.id === pid); }
+function featureOf(pid, fid) { return platformOf(pid)?.features?.find(x => x.id === fid); }
+function dispOf(pid, name) {
+  const a = platformOf(pid)?.accounts?.find(x => x.name === name);
+  return a?.display || a?.name || name;
+}
+
+/* ============ 渲染 ============ */
 function render() {
   if (!OVERVIEW) return;
   const o = OVERVIEW;
@@ -393,7 +404,8 @@ function render() {
   grid.innerHTML = "";
   for (const p of o.platforms) {
     const card = document.createElement("div");
-    card.className = "card" + (p.enabled ? "" : " disabled");
+    card.className = "card" + (p.enabled && p.available ? "" : " disabled");
+    card.dataset.pid = p.id;
 
     const signedSet = new Set(p.signedAccounts || []);
     const chips = p.accounts.map(a => {
@@ -408,8 +420,18 @@ function render() {
       </span>`;
     }).join("");
 
+    // 导入类特性 → 账号区的虚线 chip
+    const importChips = (p.features || [])
+      .filter(f => f.kind === "import" && f.available)
+      .map(f => `
+        <span class="chip add" data-act="feature" data-fid="${esc(f.id)}" data-kind="import"
+          title="${esc(f.description || "")}">
+          ⬆ ${esc(f.label)}</span>`).join("");
+
     let statusHtml;
-    if (!p.scriptFound) {
+    if (!p.available) {
+      statusHtml = `<span class="warn-dot"></span>${esc(p.unavailableReason || "当前系统不可用")}`;
+    } else if (!p.scriptFound) {
       statusHtml = `<span class="warn-dot"></span>核心脚本缺失，动作不可用`;
     } else if (p.accounts.length === 0) {
       statusHtml = `<span class="warn-dot"></span>暂无账号，请先添加`;
@@ -419,58 +441,47 @@ function render() {
       statusHtml = `<span class="warn-dot"></span>今日 ${p.signedToday}/${p.accounts.length} 个账号已签`;
     }
 
+    // 动作/后台任务类特性 → 卡片按钮
+    const featBtns = (p.features || [])
+      .filter(f => f.kind === "action" || f.kind === "job")
+      .map(f => {
+        const badge = FEATURE_STATUS[`${p.id}:${f.id}`]?.badge;
+        const disabled = (f.available === false || !p.available || !p.enabled) ? "disabled" : "";
+        return `
+        <button class="btn ${f.buttonClass || "btn-feature"}" data-act="feature"
+                data-fid="${esc(f.id)}" data-kind="${esc(f.kind)}" ${disabled}
+                title="${esc((f.description || f.label).replace(/<[^>]+>/g, ""))}">
+          ${esc(f.label)}${badge !== undefined ? ` <b class="feat-badge" data-badge="${esc(p.id + ":" + f.id)}">${esc(badge)}</b>` : ""}
+        </button>`;
+      }).join("");
+
     card.innerHTML = `
       <div class="card-head">
         <div class="badge" style="background:${p.color}">${esc(p.badge)}</div>
         <div class="card-title">${esc(p.label)}</div>
-        <label class="switch"><input type="checkbox" data-act="toggle" ${p.enabled ? "checked" : ""}><span class="slider"></span></label>
+        <label class="switch"><input type="checkbox" data-act="toggle" ${p.enabled ? "checked" : ""} ${p.available ? "" : "disabled"}><span class="slider"></span></label>
       </div>
-      <div class="status-line ${p.allSigned ? "signed" : ""}">${statusHtml}</div>
+      <div class="status-line ${p.allSigned && p.available ? "signed" : ""}">${statusHtml}</div>
       <div class="status-line">${p.currentLabel ? "当前账号：" + esc(p.currentLabel) : "当前未登录或未识别"}${p.needsRestart ? " · 切换需重启应用" : " · 热加载"}</div>
       <div class="accounts">
         ${chips}
         <span class="chip add" data-act="add">+ 添加账号</span>
-        ${p.id === "workbuddy" ? `
-        <span class="chip add" data-act="import"
-          title="导入外部导出的 WorkBuddy 登录凭证 JSON（含 access/refresh token）。&#10;导入后账号直接经官方 API 签到，无需切换桌面应用；重复导入同一账号会自动更新凭证。">
-          ⬆ 导入 JSON</span>` : ""}
+        ${importChips}
       </div>
       <div class="card-actions">
         <button class="btn" data-act="checkin" title="只签到当前登录的这个账号"
-          ${p.enabled && p.accounts.length ? "" : "disabled"}>
+          ${p.enabled && p.available && p.accounts.length ? "" : "disabled"}>
           ${p.enabled ? "立即签到" : "已停用"}
         </button>
         <button class="btn btn-ghost" data-act="checkin-all" title="依次签到该软件的全部账号（快照账号切换签到，导入账号 API 直连）"
-          ${p.enabled && p.accounts.length ? "" : "disabled"}>
+          ${p.enabled && p.available && p.accounts.length ? "" : "disabled"}>
           全部签到
         </button>
-        ${p.id === "workbuddy" ? `
-        <button class="btn btn-growth" id="btn-growth-open" data-act="growth"
-          title="自动完成成长中心任务获得积分/能量">
-          成长任务 <b id="growth-count">${GROWTH && GROWTH.ok ? `${GROWTH.completed}/${GROWTH.total}` : "–/–"}</b>
-        </button>` : ""}
-        ${p.id === "trae" ? `
-        <button class="btn btn-reset" data-act="trae-reset"
-          title="重置本机设备标识（machineid/storage.json/缓存），让 Trae 把本机识别为新设备">
-          设备重置
-        </button>` : ""}
+        ${featBtns}
       </div>
     `;
-    card.dataset.pid = p.id;
     grid.appendChild(card);
   }
-}
-
-function esc(s) {
-  return String(s ?? "").replace(/[&<>"']/g, c => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
-  }[c]));
-}
-
-function dispOf(pid, name) {
-  const p = OVERVIEW?.platforms?.find(x => x.id === pid);
-  const a = p?.accounts?.find(x => x.name === name);
-  return a?.display || a?.name || name;
 }
 
 function renderLogs(logs) {
@@ -485,7 +496,9 @@ function renderLogs(logs) {
     </div>`).join("");
 }
 
-/* ---------- 数据加载 ---------- */
+/* ============ 数据加载 ============ */
+const FEATURE_STATUS = {};   // `${pid}:${fid}` → status 概览（含 badge）
+
 async function loadOverview() {
   try {
     OVERVIEW = await api("/api/overview");
@@ -500,7 +513,23 @@ async function loadLogs() {
   } catch (e) {}
 }
 
-/* ---------- 交互 ---------- */
+async function loadFeatureBadges() {
+  // 仅拉取声明了 status 端点的特性（如成长任务 N/M 角标）
+  const tasks = [];
+  for (const p of OVERVIEW?.platforms || []) {
+    for (const f of p.features || []) {
+      if (!f.hasStatus) continue;
+      const key = `${p.id}:${f.id}`;
+      tasks.push(api(`/api/agent/${p.id}/feature/${f.id}/status`)
+        .then(st => { FEATURE_STATUS[key] = st; })
+        .catch(() => {}));
+    }
+  }
+  await Promise.all(tasks);
+  render();
+}
+
+/* ============ 交互：卡片 ============ */
 $("#grid").addEventListener("click", async (ev) => {
   if (busy) return;
   const card = ev.target.closest(".card");
@@ -511,16 +540,11 @@ $("#grid").addEventListener("click", async (ev) => {
   const act = actEl.dataset.act;
   const name = actEl.dataset.name;
 
-  if (act === "growth") {
-    openGrowthModal();
-  } else if (act === "import") {
-    $("#file-import").click();
-  } else if (act === "trae-reset") {
-    $("#modal-trae-reset").classList.add("show");
-    pollTraeResetJob();   // 若有正在执行/上次的重置,直接显示进度
+  if (act === "feature") {
+    handleFeatureClick(pid, actEl.dataset.fid, actEl.dataset.kind);
   } else if (act === "toggle") {
     const enabled = actEl.checked;
-    const r = await api(`/api/platform/${pid}/toggle`, { enabled });
+    const r = await api(`/api/agent/${pid}/toggle`, { enabled });
     toast(r.output, !r.ok);
     loadOverview();
   } else if (act === "delete") {
@@ -531,7 +555,7 @@ $("#grid").addEventListener("click", async (ev) => {
       ? `移除导入的账号 ${disp}？（仅从本地账号池删除其凭证，不影响其他数据）`
       : `删除账号 ${disp} 的快照（仅删除本地快照文件，不影响应用内登录）？`;
     if (!confirm(tip)) return;
-    const r = await api(`/api/platform/${pid}/delete`, { name });
+    const r = await api(`/api/agent/${pid}/delete`, { name });
     toast(r.output, !r.ok);
     loadOverview();
   } else if (act === "switch") {
@@ -539,25 +563,25 @@ $("#grid").addEventListener("click", async (ev) => {
       toast(`「${dispOf(pid, name)}」是导入的 token 账号：无需切换，签到时直接经官方 API 完成`);
       return;
     }
-    const p = OVERVIEW.platforms.find(x => x.id === pid);
+    const p = platformOf(pid);
     if (p.needsRestart && !confirm(`切换 ${p.label} 到 ${dispOf(pid, name)} 将退出并重启应用，请先保存好工作内容。继续？`)) return;
     setBusy(true);
-    const r = await api(`/api/platform/${pid}/switch`, { name });
+    const r = await api(`/api/agent/${pid}/switch`, { name });
     setBusy(false);
     toast(r.output, !r.ok);
     loadOverview(); loadLogs();
   } else if (act === "add") {
-    const p = OVERVIEW.platforms.find(x => x.id === pid);
+    const p = platformOf(pid);
     const name = prompt(
       `把 ${p.label} 当前登录的账号保存为快照。\n` +
       `请输入快照名（仅作内部标识，页面上将显示账号的邮箱/号码/UID）：`);
     if (!name) return;
-    const r = await api(`/api/platform/${pid}/save`, { name: name.trim() });
+    const r = await api(`/api/agent/${pid}/save`, { name: name.trim() });
     toast(r.output, !r.ok);
     loadOverview();
   } else if (act === "checkin") {
     // 立即签到 = 只签当前登录的这个账号（已是当前账号，不会重启应用）
-    const p = OVERVIEW.platforms.find(x => x.id === pid);
+    const p = platformOf(pid);
     const activeAcc = p.accounts.find(a => a.active);
     if (!activeAcc) {
       const hasToken = p.accounts.some(a => String(a.name).startsWith("token:"));
@@ -568,13 +592,13 @@ $("#grid").addEventListener("click", async (ev) => {
     }
     setBusy(true);
     toast("正在为当前账号签到…");
-    const r = await api(`/api/platform/${pid}/checkin`, { name: activeAcc.name });
+    const r = await api(`/api/agent/${pid}/checkin`, { name: activeAcc.name });
     setBusy(false);
     toast(r.output, !r.ok);
     loadOverview(); loadLogs();
   } else if (act === "checkin-all") {
     // 全部签到 = 快照账号轮流切换签到,导入的 token 账号 API 直连;完成后切回原账号
-    const p = OVERVIEW.platforms.find(x => x.id === pid);
+    const p = platformOf(pid);
     const nToken = p.accounts.filter(a => String(a.name).startsWith("token:")).length;
     let tip = `将依次为 ${p.label} 的 ${p.accounts.length} 个账号签到`
             + (nToken ? `（其中 ${nToken} 个导入账号经 API 直连，不切换应用）` : `，完成后切回原账号。`);
@@ -582,17 +606,18 @@ $("#grid").addEventListener("click", async (ev) => {
     if (!confirm(tip + "\n继续？")) return;
     setBusy(true);
     toast("全部账号签到中，多账号耗时较长，请稍候…");
-    const r = await api(`/api/platform/${pid}/checkin`, {});
+    const r = await api(`/api/agent/${pid}/checkin`, {});
     setBusy(false);
     toast(r.output, !r.ok);
     loadOverview(); loadLogs();
   }
 });
 
+/* ============ 交互：底部操作栏 ============ */
 $("#btn-checkin-all").addEventListener("click", async () => {
   if (busy) return;
   const o = OVERVIEW;
-  const heavy = o.platforms.filter(p => p.enabled && p.needsRestart && p.accounts.length);
+  const heavy = o.platforms.filter(p => p.enabled && p.available && p.needsRestart && p.accounts.length);
   let tip = `将对所有已启用平台的全部账号依次切换签到（共 ${o.progress.total} 个账号），完成后各自切回原账号。`;
   if (heavy.length) tip += `\n注意：${heavy.map(p => p.label).join("、")} 切换时会退出并重启应用，请先保存好工作内容！`;
   if (!confirm(tip + "\n继续？")) return;
@@ -629,23 +654,48 @@ $("#tg-resign").addEventListener("change", async (e) => {
   toast(r.output, !r.ok);
 });
 
-function setBusy(b) {
-  busy = b;
-  document.querySelectorAll(".btn").forEach(x => x.classList.toggle("busy", b));
+/* ============ 通用 Feature 框架 ============ */
+function handleFeatureClick(pid, fid, kind) {
+  if (kind === "import") {
+    pendingImport = { pid, fid };
+    $("#file-import").click();
+    return;
+  }
+  const f = featureOf(pid, fid);
+  if (!f || f.available === false) return;
+  if (kind === "action") {
+    runActionFeature(pid, fid, f);
+  } else if (kind === "job") {
+    if (f.renderer === "growth-tasks") openGrowthModal(pid, fid);
+    else openFeatureModal(pid, fid, f);
+  }
 }
 
-/* ---------- WorkBuddy 凭证 JSON 导入 ---------- */
+async function runActionFeature(pid, fid, f) {
+  if (f.confirm && !confirm(f.confirm)) return;
+  setBusy(true);
+  toast(`正在执行「${f.label}」…`);
+  const r = await api(`/api/agent/${pid}/feature/${fid}/run`, { payload: {} });
+  setBusy(false);
+  toast(r.output || (r.ok ? "已完成" : "执行失败"), !r.ok);
+  loadOverview(); loadLogs();
+}
+
+/* ---- 导入类：文件选择 → 上传 ---- */
+let pendingImport = null;
 $("#file-import").addEventListener("change", async () => {
   const f = $("#file-import").files[0];
   $("#file-import").value = "";   // 复位,允许再次选择同一文件
-  if (!f) return;
+  if (!f || !pendingImport) return;
+  const { pid, fid } = pendingImport;
+  pendingImport = null;
   let text;
   try { text = await f.text(); }
   catch (e) { toast(`读取文件失败: ${e}`, true); return; }
   setBusy(true);
   toast(`正在导入 ${f.name} 并验证凭证有效性…`);
   try {
-    const r = await api("/api/platform/workbuddy/import", { data: text });
+    const r = await api(`/api/agent/${pid}/feature/${fid}/import`, { data: text });
     setBusy(false);
     const skip = (r.skipped || []).map(s => `${s.name}：${s.reason}`).join("\n");
     toast(r.output + (skip ? `\n${skip}` : ""), !r.ok);
@@ -656,33 +706,95 @@ $("#file-import").addEventListener("change", async () => {
   }
 });
 
-/* ---------- WorkBuddy 成长任务 ---------- */
-let GROWTH = null;          // /api/workbuddy/growth/status 缓存
-let growthTimer = null;     // job 轮询定时器
+/* ---- 通用 job modal（描述 + 进度流 + 启动按钮） ---- */
+let featureTimer = null;
+let featureCtx = null;   // {pid, fid, feature}
+
+function openFeatureModal(pid, fid, f) {
+  featureCtx = { pid, fid, feature: f };
+  const p = platformOf(pid);
+  $("#f-title").textContent = `${p.label} · ${f.label}`;
+  $("#f-desc").innerHTML = f.description || "";
+  $("#f-run").textContent = f.startLabel || "开始执行";
+  $("#f-progress-box").style.display = "none";
+  $("#modal-feature").classList.add("show");
+  pollFeatureJob();
+}
+
+async function startFeatureJob() {
+  const { pid, fid, feature: f } = featureCtx || {};
+  if (!pid) return;
+  if (f.confirm && !confirm(f.confirm)) return;
+  const r = await api(`/api/agent/${pid}/feature/${fid}/run`, { payload: {} });
+  toast(r.output, !r.ok);
+  if (r.ok) {
+    $("#f-progress-box").style.display = "block";
+    $("#f-steps").innerHTML = "";
+    pollFeatureJob();
+  }
+}
+
+function pollFeatureJob() {
+  const { pid, fid, feature: f } = featureCtx || {};
+  if (!pid) return;
+  if (featureTimer) clearInterval(featureTimer);
+  const tick = async () => {
+    let job;
+    try { job = await api(`/api/agent/${pid}/feature/${fid}/job`); } catch (e) { return; }
+    const btn = document.querySelector(`[data-act="feature"][data-fid="${CSS.escape(fid)}"][data-kind="job"]`);
+    if (btn) btn.classList.toggle("running", !!job.running);
+    if (!job.running && !(job.steps || []).length) return;
+    $("#f-progress-box").style.display = "block";
+    const doneMark = job.running ? "" :
+      `<div class="done">—— 执行结束 ${esc(job.finishedAt)} · ${esc(job.result?.output || "")} ——</div>`;
+    $("#f-steps").innerHTML =
+      (job.steps || []).map(s => `<div><span class="ts">${esc(s.ts)}</span>${esc(s.msg)}</div>`).join("") + doneMark;
+    $("#f-steps").scrollTop = $("#f-steps").scrollHeight;
+    if (!job.running) {
+      clearInterval(featureTimer); featureTimer = null;
+      loadOverview(); loadLogs();
+    }
+  };
+  tick();
+  featureTimer = setInterval(tick, (f?.pollSeconds || 2.5) * 1000);
+}
+
+$("#f-run").addEventListener("click", startFeatureJob);
+$("#f-refresh").addEventListener("click", pollFeatureJob);
+
+/* ============ 专用渲染器：growth-tasks（成长任务列表） ============ */
 const STATUS_TEXT = {not_accepted: "未接受", accepted: "已接受", in_progress: "进行中",
                      completed: "可领奖", claimed: "已领取"};
+let growthCtx = null;        // {pid, fid}
+let growthTimer = null;      // job 轮询定时器
 
 async function loadGrowthStatus(force) {
+  const { pid, fid } = growthCtx || {};
+  if (!pid) return { ok: false, error: "未打开" };
+  const key = `${pid}:${fid}`;
   try {
-    GROWTH = await api(`/api/workbuddy/growth/status${force ? "?_=" + Date.now() : ""}`);
-  } catch (e) { GROWTH = {ok: false, error: "服务未就绪"}; }
-  const el = document.getElementById("growth-count");
-  if (el) el.textContent = GROWTH.ok ? `${GROWTH.completed}/${GROWTH.total}` : "–/–";
-  return GROWTH;
+    const st = await api(`/api/agent/${pid}/feature/${fid}/status${force ? "?_=" + Date.now() : ""}`);
+    FEATURE_STATUS[key] = st;
+  } catch (e) { FEATURE_STATUS[key] = { ok: false, error: "服务未就绪" }; }
+  const badgeEl = document.querySelector(`[data-badge="${CSS.escape(key)}"]`);
+  if (badgeEl) badgeEl.textContent = FEATURE_STATUS[key].badge ?? "–/–";
+  return FEATURE_STATUS[key];
 }
 
 function renderGrowthModal() {
+  const G = FEATURE_STATUS[`${growthCtx.pid}:${growthCtx.fid}`];
   const head = $("#g-head"), list = $("#g-list");
-  if (!GROWTH || !GROWTH.ok) {
-    head.innerHTML = `<span class="stat" style="color:var(--red)">${esc(GROWTH?.error || "加载失败")}</span>`;
+  $("#growth-title").textContent = `${platformOf(growthCtx.pid).label} 成长任务`;
+  if (!G || !G.ok) {
+    head.innerHTML = `<span class="stat" style="color:var(--red)">${esc(G?.error || "加载失败")}</span>`;
     list.innerHTML = "";
     return;
   }
   head.innerHTML = `
-    <span class="stat">任务 <b class="lit">${GROWTH.completed}/${GROWTH.total}</b> 已完成</span>
-    <span class="stat">能量 <b class="lit">${GROWTH.energy ?? "–"}</b></span>
-    <span class="stat">等级 <b>${esc(GROWTH.levelName || ("Lv." + (GROWTH.level ?? "–")))}</b></span>`;
-  list.innerHTML = GROWTH.tasks.map(t => {
+    <span class="stat">任务 <b class="lit">${G.completed}/${G.total}</b> 已完成</span>
+    <span class="stat">能量 <b class="lit">${G.energy ?? "–"}</b></span>
+    <span class="stat">等级 <b>${esc(G.levelName || ("Lv." + (G.level ?? "–")))}</b></span>`;
+  list.innerHTML = (G.tasks || []).map(t => {
     const claimable = t.status !== "claimed" && t.automatable && t.type !== "auto";
     const cls = ["g-row"];
     if (!claimable) cls.push("disabled");
@@ -705,7 +817,8 @@ function renderGrowthModal() {
   }).join("");
 }
 
-async function openGrowthModal() {
+async function openGrowthModal(pid, fid) {
+  growthCtx = { pid, fid };
   $("#modal-growth").classList.add("show");
   $("#g-progress-box").style.display = "none";
   await loadGrowthStatus(true);
@@ -714,10 +827,12 @@ async function openGrowthModal() {
 }
 
 async function startGrowthRun() {
+  const { pid, fid } = growthCtx || {};
+  if (!pid) return;
   const codes = [...document.querySelectorAll("#g-list input[type=checkbox]:checked")]
     .map(x => x.dataset.code);
   if (!codes.length) { toast("请先勾选要执行的任务", true); return; }
-  const r = await api("/api/workbuddy/growth/run", { tasks: codes });
+  const r = await api(`/api/agent/${pid}/feature/${fid}/run`, { payload: { tasks: codes } });
   toast(r.output, !r.ok);
   if (r.ok) {
     $("#g-progress-box").style.display = "block";
@@ -727,17 +842,20 @@ async function startGrowthRun() {
 }
 
 function pollGrowthJob() {
+  const { pid, fid } = growthCtx || {};
+  if (!pid) return;
   if (growthTimer) clearInterval(growthTimer);
   const tick = async () => {
     let job;
-    try { job = await api("/api/workbuddy/growth/job"); } catch (e) { return; }
-    const btn = document.getElementById("btn-growth-open");
+    try { job = await api(`/api/agent/${pid}/feature/${fid}/job`); } catch (e) { return; }
+    const btn = document.querySelector(`[data-act="feature"][data-fid="${CSS.escape(fid)}"][data-kind="job"]`);
     if (btn) btn.classList.toggle("running", !!job.running);
-    if (!job.running && !job.steps.length) return;
+    if (!job.running && !(job.steps || []).length) return;
     $("#g-progress-box").style.display = "block";
-    const doneMark = job.running ? "" : `<div class="done">—— 执行结束 ${esc(job.finishedAt)} · ${esc(job.result?.output || "")} ——</div>`;
+    const doneMark = job.running ? "" :
+      `<div class="done">—— 执行结束 ${esc(job.finishedAt)} · ${esc(job.result?.output || "")} ——</div>`;
     $("#g-steps").innerHTML =
-      job.steps.map(s => `<div><span class="ts">${esc(s.ts)}</span>${esc(s.msg)}</div>`).join("") + doneMark;
+      (job.steps || []).map(s => `<div><span class="ts">${esc(s.ts)}</span>${esc(s.msg)}</div>`).join("") + doneMark;
     $("#g-steps").scrollTop = $("#g-steps").scrollHeight;
     if (!job.running) {
       clearInterval(growthTimer); growthTimer = null;
@@ -749,64 +867,22 @@ function pollGrowthJob() {
   growthTimer = setInterval(tick, 2500);
 }
 
-// 卡片按钮(事件委托:grid 点击里排除 data-act=growth 走独立弹窗)
 $("#btn-growth-run").addEventListener("click", startGrowthRun);
 $("#btn-growth-refresh").addEventListener("click", async () => {
   await loadGrowthStatus(true);
   renderGrowthModal();
 });
 
-/* ---------- Trae 设备重置 ---------- */
-let traeResetTimer = null;   // job 轮询定时器
-
-function pollTraeResetJob() {
-  if (traeResetTimer) clearInterval(traeResetTimer);
-  const tick = async () => {
-    let job;
-    try { job = await api("/api/trae/reset/job"); } catch (e) { return; }
-    const btn = document.querySelector('[data-act="trae-reset"]');
-    if (btn) btn.classList.toggle("running", !!job.running);
-    if (!job.running && !job.steps.length) return;
-    $("#r-progress-box").style.display = "block";
-    const doneMark = job.running ? "" : `<div class="done">—— 执行结束 ${esc(job.finishedAt)} · ${esc(job.result?.output || "")} ——</div>`;
-    $("#r-steps").innerHTML =
-      job.steps.map(s => `<div><span class="ts">${esc(s.ts)}</span>${esc(s.msg)}</div>`).join("") + doneMark;
-    $("#r-steps").scrollTop = $("#r-steps").scrollHeight;
-    if (!job.running) {
-      clearInterval(traeResetTimer); traeResetTimer = null;
-      loadOverview(); loadLogs();
-    }
-  };
-  tick();
-  traeResetTimer = setInterval(tick, 2000);
-}
-
-async function startTraeReset() {
-  if (!confirm("确定重置本机 Trae 设备标识？\n\n" +
-      "· 需先完全退出 Trae（工具会自动检测，运行中会拒绝执行）\n" +
-      "· 当前账号会掉线：重置后重新打开 Trae，直接点个人用户登录即可\n" +
-      "· machineid / storage.json / 全部缓存会被清除（原文件自动备份）\n" +
-      "· 客户端 main.js 会注入16位设备ID分支（原文件自动备份，幂等）\n\n继续？")) return;
-  const r = await api("/api/trae/reset", {});
-  toast(r.output, !r.ok);
-  if (r.ok) {
-    $("#r-progress-box").style.display = "block";
-    $("#r-steps").innerHTML = "";
-    pollTraeResetJob();
-  }
-}
-
-$("#btn-trae-reset-run").addEventListener("click", startTraeReset);
-$("#btn-trae-reset-refresh").addEventListener("click", pollTraeResetJob);
-
-/* ---------- 启动 ---------- */
-loadOverview();
-loadLogs();
-loadGrowthStatus();          // 预取按钮数字(60s 服务端缓存)
-pollTraeResetJob();          // 若有正在执行的重置任务,立即恢复进度显示
-setInterval(loadOverview, 8000);
-setInterval(loadLogs, 8000);
-setInterval(() => loadGrowthStatus(), 60000);
+/* ============ 启动 ============ */
+(async function boot() {
+  await loadOverview();
+  await loadFeatureBadges();  // 预取特性角标(如成长任务 N/M)
+  loadLogs();
+  // 若有正在执行的 job 特性，恢复按钮呼吸态由各弹窗轮询处理
+  setInterval(loadOverview, 8000);
+  setInterval(loadLogs, 8000);
+  setInterval(loadFeatureBadges, 60000);
+})();
 </script>
 </body>
 </html>

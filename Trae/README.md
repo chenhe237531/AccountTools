@@ -29,10 +29,10 @@ Windows 版《trae重置工具 6.0》的 macOS 移植版（逻辑经逆向还原
 用法：
 
 ```bash
-python3 trae_reset.py            # 图形界面（需 tkinter，如 SignCenter/.venv）
+python3 trae_reset.py            # 图形界面（需 tkinter，如 .venv）
 python3 trae_reset.py --cli      # 命令行直接重置
 python3 trae_reset.py --cli --detect   # 仅检测（只读，不做任何修改）
-python3 trae_reset.py --cli --json     # 末行输出 JSON 结果（供 SignCenter 调用）
+python3 trae_reset.py --cli --json     # 末行输出 JSON 结果（供控制台(app)调用）
 python3 trae_reset.py --cli --data-dir ~/Library/Application\ Support/Trae\ CN   # 指定数据目录
 ```
 
@@ -43,7 +43,7 @@ python3 trae_reset.py --cli --data-dir ~/Library/Application\ Support/Trae\ CN  
 - 若 main.js 注入报 `Operation not permitted`：系统设置 → 隐私与安全性 → 应用管理，
   给终端/Python 勾选权限后重试，或用 `sudo` 运行。
 
-## SignCenter 集成
+## 控制台(app)集成
 
 「多平台自动签到中心」Trae CN 卡片上的 **设备重置** 按钮即调用本脚本
 （`POST /api/trae/reset`，后台执行 + 实时日志轮询）。

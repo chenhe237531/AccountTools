@@ -1,0 +1,8 @@
+# Web 控制台运行依赖（python3 -m app / run.sh）
+# 桌面端打包（PyInstaller）只用前三项核心依赖，见 .github/workflows/build-desktop.yml
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.0
+
+# 成长任务 CDP 通道（Workbuddy/wb_growth.py 懒加载；缺省时其余功能不受影响）
+playwright>=1.40

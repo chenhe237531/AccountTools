@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""WorkBuddy 成长中心任务自动化 —— 核心模块(供 SignCenter 调用,亦可 CLI 使用)
+"""WorkBuddy 成长中心任务自动化 —— 核心模块(供控制台(app)调用,亦可 CLI 使用)
 
 两条执行通道(均为实测验证过的真实路径):
   1. wbipc 轻量通道:复用 wb_checkin.py 的 WbipcClient,让 WorkBuddy 应用进程
