@@ -301,8 +301,7 @@
     </div>
     <p class="g-note">
       轻量任务（接受/领奖/兑换/抽奖）经应用 wbipc 通道秒级完成；<b>驱动桌面端</b>的任务（聊天/专家/灵感等）
-      需要 WorkBuddy 以调试端口运行（终端执行 <code>python3 Workbuddy/desktop.py ensure</code>），
-      执行期间会真实操作应用界面，请勿同时使用该应用。
+      需要 WorkBuddy 以调试端口运行——执行时会自动重启应用开启（依赖已随本服务安装），期间会真实操作应用界面，请勿同时使用该应用。
     </p>
     <div class="modal-btns">
       <button class="btn" id="btn-growth-run">后台执行勾选任务</button>
@@ -375,8 +374,14 @@ async function api(path, body) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   };
-  const r = await fetch(path, opt);
-  return r.json();
+  try {
+    const r = await fetch(path, opt);
+    return await r.json();
+  } catch (e) {
+    // 网络/服务异常时返回统一错误结构(而非抛出):
+    // 避免调用方的 setBusy(false) 被跳过,导致全部按钮永久 pointer-events:none
+    return { ok: false, output: `请求失败: ${e}`, _error: true };
+  }
 }
 
 /* ---------- 渲染 ---------- */
@@ -664,7 +669,7 @@ const STATUS_TEXT = {not_accepted: "未接受", accepted: "已接受", in_progre
 
 async function loadGrowthStatus(force) {
   try {
-    GROWTH = await api(`/api/workbuddy/growth/status${force ? "?_=" + Date.now() : ""}`);
+    GROWTH = await api(`/api/workbuddy/growth/status${force ? "?force=1&_=" + Date.now() : ""}`);
   } catch (e) { GROWTH = {ok: false, error: "服务未就绪"}; }
   const el = document.getElementById("growth-count");
   if (el) el.textContent = GROWTH.ok ? `${GROWTH.completed}/${GROWTH.total}` : "–/–";
@@ -731,6 +736,7 @@ function pollGrowthJob() {
   const tick = async () => {
     let job;
     try { job = await api("/api/workbuddy/growth/job"); } catch (e) { return; }
+    if (!job || job._error) return;
     const btn = document.getElementById("btn-growth-open");
     if (btn) btn.classList.toggle("running", !!job.running);
     if (!job.running && !job.steps.length) return;
@@ -764,6 +770,7 @@ function pollTraeResetJob() {
   const tick = async () => {
     let job;
     try { job = await api("/api/trae/reset/job"); } catch (e) { return; }
+    if (!job || job._error) return;
     const btn = document.querySelector('[data-act="trae-reset"]');
     if (btn) btn.classList.toggle("running", !!job.running);
     if (!job.running && !job.steps.length) return;

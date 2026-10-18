@@ -557,6 +557,19 @@ def growth_run_bg(codes: list) -> dict:
         try:
             if _wg is None:
                 raise RuntimeError("wb_growth 模块不可用")
+            # CDP 任务需要调试端口。开端口会重启应用,而重启会让应用回退到自身
+            # 持久化登录(丢失 SignCenter 热加载的账号)——先记住当前账号,重启后热加载回来
+            if any(c in _wg.CDP_ACTIONS for c in codes) and not _wg.cdp_available():
+                active = next((a["name"] for a in wb_state().get("accounts", [])
+                               if a.get("active") and not a.get("token")), None)
+                _wg.ensure_cdp(progress)   # 必要时重启应用(期间勿用该应用)
+                if active:
+                    progress(f"重启完成,重新热加载账号 {active} …")
+                    sw = wb_switch(active)
+                    progress(f"账号热加载: {sw.get('output', '')}")
+                    time.sleep(3)   # 等应用 fs.watch 热加载生效
+                else:
+                    progress("注意:当前账号未保存为快照,重启后应用回退到自身登录,请手动切换回目标账号")
             res = _wg.run_tasks(codes, progress=progress)
             with _growth_job_lock:
                 _growth_job.update(running=False, result=res,
@@ -998,8 +1011,9 @@ def logs(limit: int = 100):
 
 # ---- WorkBuddy 成长任务 ----
 @app.get("/api/workbuddy/growth/status")
-def growth_status_api():
-    return growth_status_cached()
+def growth_status_api(force: int = 0):
+    # force=1 绕过 60s 服务端缓存(弹窗"刷新"按钮使用,避免点了数据不更新的错觉)
+    return growth_status_cached(max_age=0 if force else 60)
 
 
 @app.post("/api/workbuddy/growth/run")

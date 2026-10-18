@@ -59,10 +59,39 @@ TASK_META = {
 class GrowthApi:
     """经 wbipc(wb.request/http.fetch)调用成长中心官方 API。"""
 
-    def __init__(self):
+    def __init__(self, wait_ready: bool = True):
         _wait_app()
         self._c = WbipcClient()
         self._c.connect()
+        if wait_ready:
+            self._wait_pipe("wb.request")
+
+    def _wait_pipe(self, pipe: str, timeout: int = 90):
+        """应用刚启动(重启/首次拉起)时 wb.request 管道注册有延迟,轮询直到就绪。
+
+        broker 对频繁的无效调用会断开连接,故用 ListPipes 探测;连接断开时自动重连。
+        """
+        deadline = time.time() + timeout
+        last = ""
+        while time.time() < deadline:
+            try:
+                r = self._c.rpc("broker/ListPipes", {})
+                pipes = (r.get("result") or {}).get("pipes") or []
+                if pipe in pipes:
+                    return
+                last = f"已注册管道: {pipes}"
+            except Exception as e:  # noqa: BLE001
+                last = str(e)
+                try:
+                    self._c.close()
+                except Exception:
+                    pass
+                time.sleep(2)
+                _wait_app()
+                self._c = WbipcClient()
+                self._c.connect()
+            time.sleep(3)
+        raise RuntimeError(f"wbipc 管道 {pipe} {timeout} 秒内未就绪({last})")
 
     def close(self):
         try:
@@ -72,6 +101,8 @@ class GrowthApi:
 
     def fetch(self, method: str, path: str, body: dict | None = None):
         r = self._c.rpc("broker/GetPipe", {"pipe": "wb.request"})
+        if "result" not in r:
+            raise RuntimeError(f"GetPipe 失败: {r.get('error')}")
         channel = r["result"]["channel"]
         params = {"method": method, "path": path,
                   "headers": {"content-type": "application/json"}}
@@ -410,6 +441,39 @@ def cdp_available() -> bool:
         return False
 
 
+DESKTOP_PY = HERE.parent / "Workbuddy" / "desktop.py"
+
+
+def ensure_cdp(report=None) -> bool:
+    """WorkBuddy 未带调试端口运行时,调 Workbuddy/desktop.py ensure 自动重启应用开启。
+
+    必须在建立 wbipc 连接(GrowthApi)之前调用:重启应用会刷新 wbipc endpoint。
+    """
+    if cdp_available():
+        return True
+    if report:
+        report("WorkBuddy 未以调试端口运行,正在重启应用开启 CDP(期间请勿使用该应用)…")
+    if not DESKTOP_PY.is_file():
+        if report:
+            report(f"未找到 {DESKTOP_PY},无法自动开启调试端口")
+        return False
+    try:
+        proc = subprocess.run([sys.executable, str(DESKTOP_PY), "ensure"],
+                              capture_output=True, text=True, timeout=120)
+    except Exception as e:  # noqa: BLE001
+        if report:
+            report(f"自动重启 WorkBuddy 失败: {e}")
+        return False
+    ok = cdp_available()
+    if report:
+        if ok:
+            report("CDP 调试端口已就绪")
+        else:
+            tail = ((proc.stdout or "") + (proc.stderr or "")).strip().splitlines()
+            report("CDP 调试端口开启失败: " + (tail[-1] if tail else "未知原因"))
+    return ok
+
+
 # --------------------------------------------------------------------------
 # 执行器
 # --------------------------------------------------------------------------
@@ -418,6 +482,10 @@ def run_tasks(codes: list, progress=None) -> dict:
     def report(msg):
         if progress:
             progress(msg)
+
+    # CDP 任务需要调试端口;未开启则先自动重启应用(会刷新 wbipc,须在 GrowthApi 之前)
+    if any(c in CDP_ACTIONS for c in codes) and not cdp_available():
+        ensure_cdp(report)
 
     api = GrowthApi()
     results = []
@@ -447,6 +515,12 @@ def run_tasks(codes: list, progress=None) -> dict:
                 if meta.get("type") == "manual":
                     results.append({"code": code, "ok": False,
                                     "msg": f"该任务需手动完成({meta.get('est')})"})
+                    report(f"「{meta.get('name', code)}」需手动完成,跳过")
+                    continue
+                if meta.get("type") == "cdp" and code not in CDP_ACTIONS:
+                    results.append({"code": code, "ok": False,
+                                    "msg": "暂无自动化实现(实验性任务),请手动完成后运行领取"})
+                    report(f"「{meta.get('name', code)}」暂无自动化实现,跳过")
                     continue
                 if code in CDP_ACTIONS:
                     # CDP 任务:按需建立连接
@@ -454,6 +528,7 @@ def run_tasks(codes: list, progress=None) -> dict:
                         if not cdp_available():
                             results.append({"code": code, "ok": False,
                                             "msg": "桌面端调试端口未开启(先运行 Workbuddy/desktop.py ensure)"})
+                            report(f"「{meta.get('name', code)}」跳过:桌面端调试端口未开启")
                             continue
                         report(f"连接桌面端 CDP …")
                         pw_ctx = _pw().start()
