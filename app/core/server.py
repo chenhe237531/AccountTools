@@ -247,13 +247,16 @@ def create_app() -> FastAPI:
 
     # ---------- Feature 通用端点 ----------
     @app.get("/api/agent/{aid}/feature/{fid}/status")
-    def feature_status(aid: str, fid: str):
+    def feature_status(aid: str, fid: str, force: int = 0):
         adapter, feature = _find_feature(aid, fid)
         if feature is None:
             return JSONResponse({"ok": False, "error": "未知 feature"}, 404)
         if feature.status is None:
             return {"ok": True}
         try:
+            # force=1 绕过服务端缓存(弹窗「刷新」按钮使用,避免点了数据不更新的错觉)
+            return feature.status(force=bool(force))
+        except TypeError:
             return feature.status()
         except Exception as e:  # noqa: BLE001
             return {"ok": False, "error": str(e)}

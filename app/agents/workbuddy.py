@@ -170,10 +170,11 @@ class WorkBuddyAdapter(AgentAdapter):
             st["badge"] = f"{st.get('completed', 0)}/{st.get('total', 0)}"
         return st
 
-    def growth_status_cached(self, max_age: int = 60) -> dict:
-        """带 60s 缓存的任务概览（供前端按钮数字与弹窗列表）。"""
+    def growth_status_cached(self, force: bool = False) -> dict:
+        """任务概览（供前端按钮数字与弹窗列表）；默认带 60s 缓存，force=1 绕过。"""
         now = time.time()
-        if self._growth_status_cache and now - self._growth_status_cache[0] < max_age:
+        if (not force and self._growth_status_cache
+                and now - self._growth_status_cache[0] < 60):
             return self._growth_status_cache[1]
         st = self._growth_status()
         self._growth_status_cache = (now, st)
@@ -189,6 +190,19 @@ class WorkBuddyAdapter(AgentAdapter):
                 return {"ok": False, "output": "未选择可执行的任务"}
 
             def target(progress):
+                # CDP 任务需要调试端口。开端口会重启应用,而重启会让应用回退到自身
+                # 持久化登录(丢失热加载的账号)——先记住当前账号,重启后热加载回来
+                if any(c in _wg.CDP_ACTIONS for c in codes) and not _wg.cdp_available():
+                    active = next((a["name"] for a in self.state().get("accounts", [])
+                                   if a.get("active") and not a.get("token")), None)
+                    _wg.ensure_cdp(progress)   # 必要时重启应用(期间勿用该应用)
+                    if active:
+                        progress(f"重启完成,重新热加载账号 {active} …")
+                        sw = self.switch(active)
+                        progress(f"账号热加载: {sw.get('output', '')}")
+                        time.sleep(3)   # 等应用 fs.watch 热加载生效
+                    else:
+                        progress("注意:当前账号未保存为快照,重启后应用回退到自身登录,请手动切换回目标账号")
                 return _wg.run_tasks(codes, progress=progress)
 
             def on_done(res):

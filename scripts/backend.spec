@@ -44,6 +44,8 @@ RUNTIME_STDLIB = [
     "runpy", "secrets", "shutil", "socket", "stat", "subprocess", "sys",
     "threading", "time", "urllib.error", "urllib.parse", "urllib.request",
     "uuid", "webbrowser",
+    # 第三方：desktop.py(ensure_cdp 自动重启开调试端口)经 runpy 运行期导入
+    "requests",
     # uvloop getaddrinfo 在事件循环里懒加载 idna 编解码器，缺失会卡死启动
     "encodings.idna",
 ]

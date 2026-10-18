@@ -49,8 +49,8 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: 安装后端依赖（核心三项，不含 playwright）
-        run: pip install fastapi "uvicorn[standard]" pydantic pyinstaller
+      - name: 安装后端依赖（核心依赖，不含 playwright）
+        run: pip install fastapi "uvicorn[standard]" pydantic requests pyinstaller
 
       - name: PyInstaller 打包后端
         run: pyinstaller scripts/backend.spec --noconfirm --clean

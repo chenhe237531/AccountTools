@@ -26,7 +26,8 @@ class Feature:
 
     kind 三种：
       "job"    后台长任务：run(payload) 启动（内部走 JobManager），job 进度流轮询展示；
-               可提供 status() 返回 {ok, badge, ...} 作为按钮角标与弹窗首屏。
+               可提供 status(force=False) 返回 {ok, badge, ...} 作为按钮角标与弹窗首屏
+               （前端「刷新」按钮会带 force=1 绕过缓存；无缓存实现可忽略该参数）。
       "action" 即时动作：run(payload) 直接执行并返回 {ok, output}。
       "import" 凭证导入：import_data(text) 解析外部导出的 JSON 并入池。
 
